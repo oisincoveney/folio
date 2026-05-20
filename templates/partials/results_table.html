@@ -1,0 +1,131 @@
+<div x-data="resultsTable()" x-show="$store.app.rows.length" class="h-full min-h-0 space-y-3">
+  <div class="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(420px,0.85fr)]">
+    <section class="flex min-h-0 min-w-0 flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div class="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p class="text-sm font-semibold text-gray-900">Batch</p>
+          <div class="mt-1 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+            <span class="inline-flex items-center gap-1" title="Total files">
+              <span class="h-2 w-2 rounded-full bg-gray-300"></span>
+              <span x-text="$store.app.total"></span>
+            </span>
+            <span class="inline-flex items-center gap-1" title="Active">
+              <svg class="h-3 w-3 animate-spin text-gray-800" viewBox="0 0 24 24" aria-hidden="true">
+                <circle class="opacity-25" cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+              </svg>
+              <span x-text="$store.app.statusCounts().active"></span>
+            </span>
+            <span class="inline-flex items-center gap-1" title="Complete">
+              <svg class="h-3 w-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+              </svg>
+              <span x-text="$store.app.statusCounts().done"></span>
+            </span>
+            <span class="inline-flex items-center gap-1" title="Errors">
+              <svg class="h-3 w-3 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              </svg>
+              <span x-text="$store.app.statusCounts().error"></span>
+            </span>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <button @click="pickDestDir()"
+                  class="inline-flex max-w-[16rem] items-center gap-1.5 truncate rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition-colors hover:border-gray-900 hover:text-gray-900">
+            <svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 7a2 2 0 012-2h3l2 2h9a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+            </svg>
+            <span class="truncate" x-text="destDir ? destDir.split('/').filter(Boolean).pop() : 'Destination'"></span>
+          </button>
+          <button x-show="!$store.app.parsing" @click="saveAll()" :disabled="$store.app.saving"
+                  class="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50">
+            <span x-text="$store.app.saving ? 'Saving...' : 'Save completed'"></span>
+          </button>
+          <button x-show="$store.app.statusCounts().error"
+                  @click="$store.app.retryFailed()"
+                  class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 transition-colors hover:border-amber-500 hover:bg-amber-100">
+            Retry failed
+          </button>
+          <button @click="$store.app.reset()"
+                  class="rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:text-gray-700">
+            Clear
+          </button>
+          <span x-show="saveResult" x-text="saveResult" class="text-sm text-gray-500"></span>
+        </div>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-auto">
+        <table class="w-full min-w-[760px] text-left text-sm">
+          <thead class="sticky top-0 z-10 border-b border-gray-100 bg-white text-xs uppercase tracking-wide text-gray-400">
+            <tr>
+              <th class="w-10 px-3 py-2"></th>
+              <th class="px-3 py-2 font-medium">File</th>
+              <th class="w-24 px-3 py-2 font-medium">Amount</th>
+              <th class="w-20 px-3 py-2 font-medium">Cur</th>
+              <th class="px-3 py-2 font-medium">Reference</th>
+              <th class="w-32 px-3 py-2 font-medium">Saved</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="row in $store.app.rows" :key="row.file_key">
+              <tr @click="$store.app.selectRow(row)"
+                  class="cursor-pointer border-b border-gray-50 transition-colors last:border-0 hover:bg-gray-50"
+                  :class="$store.app.selectedFileKey === row.file_key ? 'bg-gray-100/80' : ''">
+                <td class="px-3 py-2">
+                  <span class="flex h-5 w-5 items-center justify-center" :title="row.status">
+                    <span x-show="row.status === 'pending'" class="h-2 w-2 rounded-full border border-gray-400"></span>
+                    <svg x-show="row.status === 'active'" class="h-4 w-4 animate-spin text-gray-900" viewBox="0 0 24 24" aria-hidden="true">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                    </svg>
+                    <svg x-show="row.status === 'done'" class="h-4 w-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <svg x-show="row.status === 'error'" class="h-4 w-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    </svg>
+                    <span class="sr-only" x-text="row.status"></span>
+                  </span>
+                </td>
+                <td class="max-w-xs px-3 py-2">
+                  <div class="truncate font-medium text-gray-800" x-text="row.filename_original"></div>
+                  <div x-show="row.company || row.invoiceNumber || row.description"
+                       class="truncate text-xs text-gray-400"
+                       x-text="[row.company, row.invoiceNumber ? 'Inv ' + row.invoiceNumber : '', row.description].filter(Boolean).join(' · ')"></div>
+                  <div x-show="row.error" class="truncate text-xs text-amber-700" x-text="row.error"></div>
+                </td>
+                <td class="px-3 py-2 font-mono text-xs text-gray-700" x-text="row.amount || '-'"></td>
+                <td class="px-3 py-2 font-mono text-xs uppercase tracking-wide text-gray-700" x-text="row.targetCurrency || '-'"></td>
+                <td class="max-w-xs truncate px-3 py-2 text-gray-600" x-text="row.paymentReference || '-'"></td>
+                <td class="px-3 py-2">
+                  <button x-show="row.status === 'error'"
+                          @click.stop="$store.app.retryRow(row)"
+                          class="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 transition-colors hover:border-amber-500 hover:bg-amber-100">
+                    Retry
+                  </button>
+                  <span x-show="$store.app.isQueued(row)"
+                        class="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs font-medium text-gray-500">
+                    Queued
+                  </span>
+                  <span x-show="row.statusOk" class="inline-flex items-center text-green-600" :title="row.savedAs">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                    </svg>
+                  </span>
+                  <span x-show="!row.statusOk && row.savedAs" class="text-xs text-amber-700" x-text="row.savedAs"></span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    {% include 'partials/log_panel.html' %}
+  </div>
+</div>

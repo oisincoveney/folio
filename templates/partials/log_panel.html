@@ -1,0 +1,136 @@
+<section x-data="fileInspector()" class="flex min-h-0 min-w-0 flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
+  <template x-if="row()">
+    <div class="flex h-full min-h-0 flex-col">
+      <div class="border-b border-gray-100 px-4 py-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="truncate text-sm font-semibold text-gray-900" x-text="row().filename_original"></p>
+            <p class="mt-1 text-xs text-gray-500">
+              <span x-text="visibleLogs().length"></span>
+              <span>events</span>
+              <span x-show="hiddenTechnicalCount()">·</span>
+              <span x-show="hiddenTechnicalCount()" x-text="hiddenTechnicalCount() + ' hidden technical'"></span>
+            </p>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <button x-show="row().status === 'error'"
+                    @click="retrySelected()"
+                    class="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 transition-colors hover:border-amber-500 hover:bg-amber-100">
+              Retry
+            </button>
+            <button x-show="isQueued()"
+                    disabled
+                    class="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs font-medium text-gray-500">
+              Queued
+            </button>
+            <button x-show="row().logs.some(entry => entry.technical)"
+                    @click="showTechnical = !showTechnical"
+                    class="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-800"
+                    x-text="showTechnical ? 'Hide technical' : 'Show technical'"></button>
+            <span class="flex h-6 w-6 items-center justify-center" :title="row().status">
+              <span x-show="row().status === 'pending'" class="h-2 w-2 rounded-full border border-gray-400"></span>
+              <svg x-show="row().status === 'active'" class="h-4 w-4 animate-spin text-gray-900" viewBox="0 0 24 24" aria-hidden="true">
+                <circle class="opacity-25" cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+              </svg>
+              <svg x-show="row().status === 'done'" class="h-4 w-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+              </svg>
+              <svg x-show="row().status === 'error'" class="h-4 w-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              </svg>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div x-ref="logPanel" class="min-h-0 flex-1 overflow-y-auto bg-gray-950 p-3 text-xs">
+        <template x-for="(entry, i) in visibleLogs()" :key="i">
+          <div class="mb-2 rounded-lg border border-white/10 bg-white/[0.035]">
+            <div class="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide"
+                      :class="entry.stream === 'stderr' ? 'text-amber-200' : 'text-gray-300'"
+                      x-text="entry.stream"></span>
+                <span class="truncate text-gray-400" x-text="entry.title"></span>
+                <span x-show="entry.meta" class="truncate text-gray-500" x-text="entry.meta"></span>
+              </div>
+              <div class="flex items-center gap-2">
+                <button @click.stop="copyRaw(entry)"
+                        class="text-[11px] text-gray-500 transition-colors hover:text-gray-200">Copy</button>
+                <button @click.stop="entry.expanded = !entry.expanded"
+                        class="text-[11px] text-gray-500 transition-colors hover:text-gray-200"
+                        x-text="entry.expanded ? 'Parsed' : 'Raw'"></button>
+              </div>
+            </div>
+            <div x-show="!entry.expanded"
+                 class="whitespace-pre-wrap break-words px-3 py-2 leading-relaxed text-gray-200"
+                 :class="['text', 'reasoning', 'message'].includes(entry.type) ? 'text-sm' : 'font-mono'"
+                 x-text="entry.body"></div>
+            <pre x-show="entry.expanded"
+                 class="max-h-72 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono leading-relaxed text-gray-300"
+                 x-text="entry.raw"></pre>
+          </div>
+        </template>
+
+        <div x-show="!visibleLogs().length" class="p-4 text-gray-600">No visible events yet.</div>
+      </div>
+
+      <div class="border-t border-gray-100 p-4">
+        <div class="grid gap-3 sm:grid-cols-[1fr_96px_1.3fr]">
+          <label class="block">
+            <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Amount</span>
+            <input x-model="row().amount" :disabled="row().parsing"
+                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20 disabled:bg-gray-50 disabled:text-gray-400">
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Currency</span>
+            <input x-model="row().targetCurrency" maxlength="3" :disabled="row().parsing"
+                   class="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-gray-900/20 disabled:bg-gray-50 disabled:text-gray-400">
+          </label>
+          <label class="block">
+            <span class="mb-1 flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+              <span>Reference</span>
+              <button type="button"
+                      x-show="!row().parsing"
+                      @click="rebuildReference()"
+                      class="normal-case tracking-normal text-gray-500 transition-colors hover:text-gray-900">
+                Rebuild
+              </button>
+            </span>
+            <input x-model="row().paymentReference" :disabled="row().parsing"
+                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20 disabled:bg-gray-50 disabled:text-gray-400">
+          </label>
+        </div>
+        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <label class="block">
+            <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Company</span>
+            <input x-model="row().company" :disabled="row().parsing"
+                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20 disabled:bg-gray-50 disabled:text-gray-400">
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Invoice #</span>
+            <input x-model="row().invoiceNumber" :disabled="row().parsing"
+                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20 disabled:bg-gray-50 disabled:text-gray-400">
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Date</span>
+            <input x-model="row().invoiceDate" :disabled="row().parsing"
+                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20 disabled:bg-gray-50 disabled:text-gray-400">
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Account</span>
+            <input x-model="row().accountNumber" :disabled="row().parsing"
+                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20 disabled:bg-gray-50 disabled:text-gray-400">
+          </label>
+          <label class="block sm:col-span-2">
+            <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Description</span>
+            <input x-model="row().description" :disabled="row().parsing"
+                   class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/20 disabled:bg-gray-50 disabled:text-gray-400">
+          </label>
+        </div>
+      </div>
+    </div>
+  </template>
+</section>

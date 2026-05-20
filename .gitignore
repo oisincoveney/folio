@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Runtime uploads staged for OpenCode
+.folio_uploads/
+
+# Claude Code session data
+.claude/

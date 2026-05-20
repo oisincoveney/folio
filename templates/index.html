@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>folio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+  <script src="{{ url_for('static', filename='store.js') }}"></script>
+  <script src="{{ url_for('static', filename='components/header.js') }}"></script>
+  <script src="{{ url_for('static', filename='components/file_picker.js') }}"></script>
+  <script src="{{ url_for('static', filename='components/results_table.js') }}"></script>
+  <script src="{{ url_for('static', filename='components/log_panel.js') }}"></script>
+  <script src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js" defer></script>
+</head>
+<body class="h-screen overflow-hidden bg-gray-100 text-gray-950">
+  <div class="flex h-screen flex-col overflow-hidden" x-data x-cloak>
+    {% include 'partials/header.html' %}
+    <main class="min-h-0 flex-1 overflow-hidden px-4 py-4 sm:px-6">
+      {% include 'partials/file_picker.html' %}
+      {% include 'partials/results_table.html' %}
+    </main>
+  </div>
+</body>
+</html>
