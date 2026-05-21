@@ -1,4 +1,4 @@
-from normalization import (
+from folio.normalization import (
     ObservedVendorNormalizer,
     normalize_amount,
     normalize_company,

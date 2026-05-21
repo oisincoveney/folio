@@ -4,8 +4,8 @@ from pathlib import Path
 
 import polars as pl
 
-import storage
-from config import CSV_COLUMNS
+from folio import storage
+from folio.config import CSV_COLUMNS
 
 
 class FixedDate(datetime.date):

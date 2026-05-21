@@ -1,4 +1,4 @@
-import parse
+from folio import parse
 
 
 def setup_function():

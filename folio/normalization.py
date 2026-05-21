@@ -1,3 +1,5 @@
+"""Text normalization utilities for invoice fields."""
+
 import datetime
 import threading
 from decimal import Decimal, InvalidOperation
@@ -11,12 +13,16 @@ from rapidfuzz import fuzz, process
 from slugify import slugify
 from titlecase import titlecase
 
+_ISO_CURRENCY_LEN = 3
+
 
 def clean_text(value: object) -> str:
+    """Strip, unicode-fix, and collapse whitespace from a raw value."""
     return " ".join(fix_text(str(value or "")).split()).strip(" -_.,")
 
 
 def normalize_amount(value: object) -> str:
+    """Return a 2-decimal string for a numeric or currency-prefixed amount."""
     if value is None:
         return ""
     parsed = Price.fromstring(str(value))
@@ -30,13 +36,15 @@ def normalize_amount(value: object) -> str:
 
 
 def normalize_currency(value: object) -> str:
+    """Return an ISO-4217 3-letter currency code, or empty string if unrecognised."""
     currency = clean_text(value).upper()
-    if len(currency) != 3:
+    if len(currency) != _ISO_CURRENCY_LEN:
         return ""
     return currency if pycountry.currencies.get(alpha_3=currency) else ""
 
 
 def normalize_date(value: object) -> str:
+    """Return an ISO-8601 date string, or empty string if unparseable."""
     text = clean_text(value)
     if not text:
         return ""
@@ -58,11 +66,13 @@ def _company_basename(value: object) -> str:
 
 
 def company_key(value: object) -> str:
+    """Return a lowercase kebab-case slug for matching company names."""
     text = _company_basename(value)
     return slugify(text, lowercase=True, separator="-")
 
 
 def normalize_company(value: object) -> str:
+    """Return a title-cased company name with legal suffixes stripped."""
     text = _company_basename(value)
     if not text:
         return ""
@@ -70,21 +80,27 @@ def normalize_company(value: object) -> str:
 
 
 def normalize_description(value: object) -> str:
+    """Return a title-cased description string."""
     text = clean_text(value)
     return titlecase(text) if text else ""
 
 
 def normalize_invoice_number(value: object) -> str:
+    """Return an invoice number with internal whitespace removed."""
     return "".join(clean_text(value).split())
 
 
 class ObservedVendorNormalizer:
+    """Normalise company names consistently within a session."""
+
     def __init__(self, cutoff: int = 90) -> None:
+        """Initialise with a fuzzy-match similarity cutoff (0-100)."""
         self.cutoff = cutoff
         self._display_by_key: dict[str, str] = {}
         self._lock = threading.Lock()
 
     def normalize(self, value: object) -> str:
+        """Return the canonical display name for a company, reusing prior matches."""
         key = company_key(value)
         if not key:
             return ""

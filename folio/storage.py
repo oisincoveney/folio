@@ -1,13 +1,16 @@
+"""CSV record keeping and invoice file naming."""
+
 import datetime
 from pathlib import Path
 
 import polars as pl
 from slugify import slugify
 
-from config import CSV_COLUMNS, STATIC_FIELDS
+from folio.config import CSV_COLUMNS, STATIC_FIELDS
 
 
 def get_next_ref(csv_path: str | Path) -> int:
+    """Return the next sequential reference number for the payments CSV."""
     p = Path(csv_path)
     if not p.exists():
         return 1
@@ -24,8 +27,9 @@ def get_next_ref(csv_path: str | Path) -> int:
 
 
 def ensure_csv(csv_path: Path) -> None:
+    """Create the payments CSV with the correct header if it does not exist."""
     if not csv_path.exists():
-        pl.DataFrame(schema={col: pl.String for col in CSV_COLUMNS}).write_csv(csv_path)
+        pl.DataFrame(schema=dict.fromkeys(CSV_COLUMNS, pl.String)).write_csv(csv_path)
 
 
 def append_csv_row(
@@ -35,6 +39,7 @@ def append_csv_row(
     payment_reference: str,
     ref_num: int,
 ) -> None:
+    """Append one payment row to the CSV, creating it with headers if needed."""
     p = Path(csv_path)
     ensure_csv(p)
     row = {
@@ -44,10 +49,13 @@ def append_csv_row(
         "paymentReference": payment_reference,
         "referenceNumber": str(ref_num),
     }
-    pl.concat([pl.read_csv(p, infer_schema_length=0), pl.DataFrame([row]).select(CSV_COLUMNS)]).write_csv(p)
+    existing = pl.read_csv(p, infer_schema_length=0)
+    new_row = pl.DataFrame([row]).select(CSV_COLUMNS)
+    pl.concat([existing, new_row]).write_csv(p)
 
 
 def build_filename(payment_reference: str, amount: str, currency: str) -> str:
+    """Build a dated PDF filename from payment reference, amount and currency."""
     today = datetime.date.today().isoformat()
     ref = _filename_part(payment_reference)
     amount_part = _filename_part(amount)
@@ -67,6 +75,7 @@ def _filename_part(value: str, max_len: int = 0) -> str:
 
 
 def build_invoice_filename(row: dict) -> str:
+    """Build a dated PDF filename from invoice row fields."""
     today = datetime.date.today().isoformat()
     company = _filename_part(row.get("company", ""), 28)
     invoice = _filename_part(row.get("invoiceNumber", ""), 32)

@@ -1,0 +1,27 @@
+[tools]
+python = "3.14.3"
+uv = "0.11.13"
+
+[tasks.dev]
+description = "Start the Reflex dev server"
+run = "uv run reflex run"
+
+[tasks.lint]
+description = "Run ruff linter"
+run = "uv run ruff check folio/"
+
+[tasks.fix]
+description = "Run ruff linter and apply fixes"
+run = "uv run ruff check --fix folio/"
+
+[tasks.typecheck]
+description = "Run pyright type checker"
+run = "uv run pyright folio/"
+
+[tasks.test]
+description = "Run pytest"
+run = "uv run pytest"
+
+[tasks.check]
+description = "Run lint and typecheck together"
+depends = ["lint", "typecheck"]

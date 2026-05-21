@@ -1,3 +1,5 @@
+"""Application configuration and constants."""
+
 import shutil
 
 OPENCODE = shutil.which("opencode") or "opencode"
