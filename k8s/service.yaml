@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: folio
+spec:
+  selector:
+    app: folio
+  ports:
+    - name: frontend
+      port: 3000
+      targetPort: 3000
+    - name: backend
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
