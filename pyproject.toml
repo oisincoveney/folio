@@ -38,10 +38,20 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = [
-  "RUF012",   # Reflex State mutable defaults required by metaclass
-  "TC001",    # app imports needed at runtime by Reflex annotation evaluation
-  "TC003",    # stdlib imports needed at runtime by Reflex annotation evaluation
-  "N815",     # InvoiceData fields match opencode camelCase JSON schema
-  "DTZ011",   # date.today() used intentionally to support test monkeypatching
+
+[tool.ruff.lint.per-file-ignores]
+# Reflex's State metaclass reads class-level annotations and mutable defaults at
+# runtime, and rx.foreach inspects callback signatures at runtime — so the usual
+# ClassVar / TYPE_CHECKING patterns don't apply to State files or components.
+"folio/state.py" = [
+  "RUF012",  # mutable class defaults are the declarative state schema
+  "TC001",   # app-internal imports used in runtime-evaluated annotations
+  "TC003",   # stdlib imports used in runtime-evaluated annotations
 ]
+"folio/components/*.py" = [
+  "RUF012",  # mutable class defaults are the declarative state schema
+  "TC001",   # app-internal imports used in runtime-evaluated annotations
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
