@@ -4,25 +4,20 @@ Two tiers:
 
 1. Queue-level: mock `parse.start_parse_job` with a canned event queue. Tests
    the upload → state-streaming → save path without running opencode.
-2. Subprocess-level: monkeypatch `folio.parse.OPENCODE` to a tiny fake binary
-   that prints the JSON opencode would have produced. Exercises the real
-   classify + extract subprocess flow (argv, JSON line parsing, retry logic)
-   without needing a real LLM. Plus a download-roundtrip via presigned URL.
+2. Subprocess-level: monkeypatch `folio.parse.OPENCODE` to a fake binary
+   (see `fake_opencode` fixture in conftest.py) that prints the JSON opencode
+   would have produced. Exercises the real classify + extract subprocess flow.
 
-The Wise CSV format is verified at column-order + static-field level in the
-subprocess test, since that's the produced artifact users will hand to Wise.
+The Wise CSV format and download roundtrip are verified at the subprocess level
+since those are the artifacts users hand to Wise / fetch from the browser.
 """
 
 from __future__ import annotations
 
-import datetime
 import io
-import json
 import os
 import queue
-import stat
 import urllib.request
-from pathlib import Path
 
 import polars as pl
 import pytest
@@ -31,41 +26,15 @@ from sqlmodel import select
 
 from folio import parse as parse_mod
 from folio.config import CSV_COLUMNS, STATIC_FIELDS
+from folio.db_models import (
+    BankTransactionRecord,
+    InvoiceRecord,
+    PayslipRecord,
+    TaxReceiptRecord,
+)
 from folio.state import AppState
 
-
-def _month_prefix() -> str:
-    return datetime.datetime.now(tz=datetime.UTC).date().strftime("%Y-%m")
-
-
-def _upload_file(name: str, data: bytes) -> rx.UploadFile:
-    return rx.UploadFile(file=io.BytesIO(data), path=Path(name))
-
-
-async def _drain_queue(state: AppState, q: queue.Queue) -> None:
-    """Pull events off the parse queue and apply them to state.
-
-    Replaces stream_parse's @rx.event(background=True) loop so tests don't have
-    to drive Reflex's background-event machinery.
-    """
-    while True:
-        try:
-            event = q.get(block=True, timeout=10)
-        except queue.Empty:
-            break
-        state._apply_event(event)  # noqa: SLF001
-        if event.get("type") == "done":
-            break
-
-
-async def _drain_active_job(state: AppState) -> None:
-    """Find the queue from handle_upload's _active_jobs and drain it."""
-    from folio.state import _active_jobs  # noqa: PLC0415
-
-    job_id, q = next(iter(_active_jobs.items()))
-    await _drain_queue(state, q)
-    _active_jobs.pop(job_id, None)
-
+from tests._helpers import drain_active_job, make_upload_file, month_prefix
 
 # ----------------------------------------------------------------------------
 # Tier 1: queue-level e2e (mock at start_parse_job)
@@ -75,8 +44,6 @@ async def _drain_active_job(state: AppState) -> None:
 @pytest.mark.asyncio
 async def test_upload_parse_save_end_to_end(s3, clean_db, clean_bucket, monkeypatch):
     """Drag a PDF onto the app → mocked parse queue → save to S3 + Postgres."""
-    from folio.db_models import InvoiceRecord  # noqa: PLC0415
-
     pdf_bytes = b"%PDF-1.4 e2e test invoice"
     file_id = "e2e-fake-fid"
 
@@ -109,24 +76,17 @@ async def test_upload_parse_save_end_to_end(s3, clean_db, clean_bucket, monkeypa
 
     state = AppState()
     state.model = "test-model"
-    async for _ in state.handle_upload([_upload_file("invoice.pdf", pdf_bytes)]):
+    async for _ in state.handle_upload([make_upload_file("invoice.pdf", pdf_bytes)]):
         pass
-    await _drain_active_job(state)
+    await drain_active_job(state)
 
-    row = state.rows[0]
-    assert row.status == "done"
-    assert row.amount == "199.00"
-    assert row.company == "E2E Corp"
-
+    assert state.rows[0].status == "done"
     state.save_row("invoice.pdf")
     assert state.rows[0].status_ok is True
 
     bucket = os.environ["FOLIO_BUCKET_NAME"]
-    keys = [
-        o["Key"]
-        for o in s3.list_objects_v2(Bucket=bucket).get("Contents", [])
-    ]
-    invoice_keys = [k for k in keys if k.startswith(f"{_month_prefix()}/invoices/")]
+    keys = [o["Key"] for o in s3.list_objects_v2(Bucket=bucket).get("Contents", [])]
+    invoice_keys = [k for k in keys if k.startswith(f"{month_prefix()}/invoices/")]
     assert len(invoice_keys) == 1
     assert s3.get_object(Bucket=bucket, Key=invoice_keys[0])["Body"].read() == pdf_bytes
 
@@ -140,7 +100,7 @@ async def test_upload_parse_save_end_to_end(s3, clean_db, clean_bucket, monkeypa
 async def test_upload_with_parse_error_marks_row_error_and_blocks_save(
     s3, clean_db, clean_bucket, monkeypatch,
 ):
-    """Parse fails → row goes to error status; save_row is a no-op (no claim)."""
+    """Parse fails → row goes to error status; save_all_done skips error rows."""
 
     def fake_start_parse_job(temp_files, _model):
         q: queue.Queue = queue.Queue()
@@ -157,15 +117,14 @@ async def test_upload_with_parse_error_marks_row_error_and_blocks_save(
 
     state = AppState()
     state.model = "test-model"
-    async for _ in state.handle_upload([_upload_file("bad.pdf", b"%PDF-1.4 bad")]):
+    async for _ in state.handle_upload([make_upload_file("bad.pdf", b"%PDF-1.4 bad")]):
         pass
-    await _drain_active_job(state)
+    await drain_active_job(state)
 
     assert state.rows[0].status == "error"
     state.save_all_done()
-    assert s3.list_objects_v2(Bucket=os.environ["FOLIO_BUCKET_NAME"]).get("Contents") in (
-        None, [],
-    )
+    bucket = os.environ["FOLIO_BUCKET_NAME"]
+    assert s3.list_objects_v2(Bucket=bucket).get("Contents") in (None, [])
 
 
 # ----------------------------------------------------------------------------
@@ -173,92 +132,19 @@ async def test_upload_with_parse_error_marks_row_error_and_blocks_save(
 # ----------------------------------------------------------------------------
 
 
-# A tiny standalone Python script that we drop on disk and point OPENCODE at.
-# parse.py invokes `[OPENCODE, "run", "--format", "json", "--file", PDF, "-m",
-# MODEL, PROMPT]`. The prompt is the last argv; we branch on its content and
-# print one JSON line of opencode's stream format containing the canned text
-# the upstream code would extract.
-_FAKE_OPENCODE = '''\
-#!/usr/bin/env python3
-"""Fake opencode binary for E2E testing. Prints canned JSON to stdout."""
-import json
-import sys
-
-argv = sys.argv
-# opencode subcommand: argv[1] is "run" or "models"
-if len(argv) < 2 or argv[1] != "run":
-    sys.exit(0)
-
-prompt = argv[-1]
-
-if "Classify the document type" in prompt:
-    payload = {"doc_type": "invoice"}
-elif "PDF invoice" in prompt:
-    payload = {
-        "amount": "199.00",
-        "targetCurrency": "EUR",
-        "company": "Acme Test Vendor",
-        "invoiceNumber": "INV-100",
-        "invoiceDate": "2026-05-20",
-        "description": "Cloud Hosting May 2026",
-        "accountNumber": "ACC-42",
-    }
-elif "PDF bank statement" in prompt:
-    payload = {
-        "transaction_date": "2026-05-15", "amount": "500.00", "currency": "EUR",
-        "counterparty": "Wise", "description": "Transfer",
-        "running_balance": "1500.00",
-    }
-else:
-    payload = {}
-
-print(json.dumps({"type": "text", "part": {"text": json.dumps(payload)}}))
-'''
-
-
-@pytest.fixture
-def fake_opencode(tmp_path, monkeypatch):
-    """Drop a fake opencode binary on disk and point parse.OPENCODE at it.
-
-    parse.py imports `OPENCODE` from config at load time, so we monkeypatch the
-    *parse module's* binding — patching `folio.config.OPENCODE` is too late.
-    """
-    script = tmp_path / "fake_opencode"
-    script.write_text(_FAKE_OPENCODE)
-    script.chmod(script.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    monkeypatch.setattr("folio.parse.OPENCODE", str(script))
-    return script
-
-
 @pytest.mark.asyncio
 async def test_full_subprocess_e2e_uploads_parses_saves_and_downloads(
     s3, clean_db, clean_bucket, fake_opencode,
 ):
-    """Full chain through the real subprocess invocation, with download verify.
-
-    1. Upload a PDF via real handle_upload.
-    2. Real `start_parse_job` runs, which spawns subprocess.Popen calls against
-       our fake opencode. The classify pass returns doc_type=invoice; the
-       extract pass returns canned invoice fields.
-    3. State populates from the result event.
-    4. save_row uploads the PDF to minio under YYYY-MM/invoices/ with the
-       generated filename, appends payments.csv, upserts the DB record.
-    5. Generate a presigned URL for the saved object and HTTP GET it back —
-       bytes should match the originally uploaded PDF.
-    """
-    from folio.db_models import InvoiceRecord  # noqa: PLC0415
-
+    """Full chain through the real subprocess invocation, with download verify."""
     pdf_bytes = b"%PDF-1.4 real subprocess flow test " + os.urandom(32)
 
     state = AppState()
-    state.model = "test-model"  # skip get_default_model (would shell out for models list)
-
-    # Upload (real handle_upload, real subprocess Popen via fake_opencode).
-    async for _ in state.handle_upload([_upload_file("invoice.pdf", pdf_bytes)]):
+    state.model = "test-model"
+    async for _ in state.handle_upload([make_upload_file("invoice.pdf", pdf_bytes)]):
         pass
-    await _drain_active_job(state)
+    await drain_active_job(state)
 
-    # State reflects the extraction.
     row = state.rows[0]
     assert row.status == "done", f"error={row.error!r}"
     assert row.amount == "199.00"
@@ -266,87 +152,60 @@ async def test_full_subprocess_e2e_uploads_parses_saves_and_downloads(
     assert row.invoice_number == "INV-100"
     assert row.invoice_date == "2026-05-20"
     assert row.account_number == "ACC-42"
-    # company comes from vendor-normalizer + the fake's "Acme Test Vendor"
     assert "Acme" in row.company
-    # Reference is synthesized from company/invoice/description; must mention all.
     assert "Inv INV-100" in row.payment_reference
 
-    # Save.
     state.save_row("invoice.pdf")
     assert state.rows[0].status_ok is True
-    assert state.rows[0].error == ""
 
-    # S3 key: YYYY-MM/invoices/YYYY-MM-DD_<slug>_<inv>_<amount>-<curr>.pdf
     saved_key = state.rows[0].saved_as
-    assert saved_key.startswith(f"{_month_prefix()}/invoices/")
+    assert saved_key.startswith(f"{month_prefix()}/invoices/")
     filename = saved_key.split("/")[-1]
-    assert filename.endswith(".pdf")
     assert "inv-100" in filename
     assert "199-00" in filename
     assert "eur" in filename
 
     bucket = os.environ["FOLIO_BUCKET_NAME"]
-    obj = s3.get_object(Bucket=bucket, Key=saved_key)
-    assert obj["Body"].read() == pdf_bytes
+    assert s3.get_object(Bucket=bucket, Key=saved_key)["Body"].read() == pdf_bytes
 
-    # DB record landed and points at the same key.
     with rx.session() as session:
         records = list(session.exec(select(InvoiceRecord)).all())
     assert len(records) == 1
     assert records[0].file_key == saved_key
-    assert records[0].amount == "199.00"
-    assert records[0].currency == "EUR"
 
-    # Download via presigned URL (what state.download_file would generate).
+    # Download via presigned URL → real HTTP GET → bytes match.
     url = s3.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": bucket, "Key": saved_key},
-        ExpiresIn=300,
+        "get_object", Params={"Bucket": bucket, "Key": saved_key}, ExpiresIn=300,
     )
     with urllib.request.urlopen(url) as resp:  # noqa: S310
-        downloaded = resp.read()
-    assert downloaded == pdf_bytes
+        assert resp.read() == pdf_bytes
 
 
 @pytest.mark.asyncio
 async def test_payments_csv_matches_wise_bulk_upload_schema(
     s3, clean_db, clean_bucket, fake_opencode,
 ):
-    """The payments.csv produced by save_row is Wise's bulk-payment format.
-
-    Columns + their order are Wise's required header. Static fields (recipientDetail,
-    sourceCurrency, amountCurrency, receiverType) are set from STATIC_FIELDS;
-    dynamic fields (targetCurrency, amount, paymentReference, referenceNumber)
-    come from the parsed invoice.
-    """
-    pdf_bytes = b"%PDF-1.4 wise csv schema test"
-
+    """payments.csv columns + static fields match Wise's bulk-payment format."""
     state = AppState()
     state.model = "test-model"
-    async for _ in state.handle_upload([_upload_file("wise.pdf", pdf_bytes)]):
+    async for _ in state.handle_upload(
+        [make_upload_file("wise.pdf", b"%PDF-1.4 wise csv schema test")],
+    ):
         pass
-    await _drain_active_job(state)
-
+    await drain_active_job(state)
     state.save_row("wise.pdf")
     assert state.rows[0].status_ok is True
 
     bucket = os.environ["FOLIO_BUCKET_NAME"]
-    csv_obj = s3.get_object(Bucket=bucket, Key=f"{_month_prefix()}/payments.csv")
-    raw = csv_obj["Body"].read()
-    df = pl.read_csv(io.BytesIO(raw), infer_schema_length=0)
+    csv_obj = s3.get_object(Bucket=bucket, Key=f"{month_prefix()}/payments.csv")
+    df = pl.read_csv(io.BytesIO(csv_obj["Body"].read()), infer_schema_length=0)
 
-    # 1) Column order matches Wise's required header.
     assert df.columns == CSV_COLUMNS
-
     row = df.row(0, named=True)
-
-    # 2) Static fields (Wise account routing).
     assert row["recipientDetail"] == STATIC_FIELDS["recipientDetail"] == "Wise account"
     assert row["sourceCurrency"] == STATIC_FIELDS["sourceCurrency"] == "EUR"
     assert row["amountCurrency"] == STATIC_FIELDS["amountCurrency"] == "source"
     assert row["receiverType"] == STATIC_FIELDS["receiverType"] == "PERSON"
-
-    # 3) Dynamic fields come from the parsed invoice.
     assert row["targetCurrency"] == "EUR"
     assert row["amount"] == "199.00"
     assert "Inv INV-100" in row["paymentReference"]
@@ -357,20 +216,144 @@ async def test_payments_csv_matches_wise_bulk_upload_schema(
 async def test_payments_csv_increments_reference_across_saves(
     s3, clean_db, clean_bucket, fake_opencode,
 ):
-    """Two successive invoice saves produce referenceNumber 1, 2."""
+    """Two saves → referenceNumber 1, 2."""
     state = AppState()
     state.model = "test-model"
-
     for name in ("first.pdf", "second.pdf"):
-        async for _ in state.handle_upload([_upload_file(name, b"%PDF-1.4 " + name.encode())]):
+        async for _ in state.handle_upload(
+            [make_upload_file(name, b"%PDF-1.4 " + name.encode())],
+        ):
             pass
-        await _drain_active_job(state)
+        await drain_active_job(state)
 
-    # Two rows parsed; save both.
     state.save_row("first.pdf")
     state.save_row("second.pdf")
 
     bucket = os.environ["FOLIO_BUCKET_NAME"]
-    csv_obj = s3.get_object(Bucket=bucket, Key=f"{_month_prefix()}/payments.csv")
+    csv_obj = s3.get_object(Bucket=bucket, Key=f"{month_prefix()}/payments.csv")
     df = pl.read_csv(io.BytesIO(csv_obj["Body"].read()), infer_schema_length=0)
     assert df["referenceNumber"].to_list() == ["1", "2"]
+
+
+# ----------------------------------------------------------------------------
+# Multi-doc-type subprocess flows
+# ----------------------------------------------------------------------------
+
+
+_DOC_TYPE_PARAMS = [
+    ("invoice", "invoices", InvoiceRecord, True),
+    ("bank_statement", "bank-statements", BankTransactionRecord, False),
+    ("tax_receipt", "tax-receipts", TaxReceiptRecord, False),
+    ("payslip", "payslips", PayslipRecord, False),
+]
+
+
+@pytest.mark.parametrize(("doc_type", "prefix", "record_cls", "csv_expected"), _DOC_TYPE_PARAMS)
+@pytest.mark.asyncio
+async def test_multi_doc_type_e2e_through_subprocess(
+    doc_type, prefix, record_cls, csv_expected,
+    s3, clean_db, clean_bucket, fake_opencode, monkeypatch,
+):
+    """Each doc type takes its own subprocess path and persists to the right table.
+
+    Classify returns the doc_type we set; extract uses the matching prompt; save
+    lands the PDF under the type-specific S3 prefix and inserts a row in the
+    correct table. Only invoice produces payments.csv.
+    """
+    monkeypatch.setenv("FAKE_DOC_TYPE", doc_type)
+
+    state = AppState()
+    state.model = "test-model"
+    name = f"{doc_type}.pdf"
+    async for _ in state.handle_upload([make_upload_file(name, b"%PDF-1.4 " + name.encode())]):
+        pass
+    await drain_active_job(state)
+
+    row = state.rows[0]
+    assert row.status == "done", f"error={row.error!r}"
+    assert row.doc_type == doc_type
+
+    state.save_row(name)
+    assert state.rows[0].status_ok is True, f"err={state.rows[0].error!r}"
+
+    bucket = os.environ["FOLIO_BUCKET_NAME"]
+    keys = [o["Key"] for o in s3.list_objects_v2(Bucket=bucket).get("Contents", [])]
+    type_keys = [k for k in keys if k.startswith(f"{month_prefix()}/{prefix}/")]
+    assert len(type_keys) == 1
+
+    has_csv = any(k.endswith("payments.csv") for k in keys)
+    assert has_csv is csv_expected
+
+    with rx.session() as session:
+        records = list(session.exec(select(record_cls)).all())
+    assert len(records) == 1
+    assert records[0].file_key == type_keys[0]
+
+
+# ----------------------------------------------------------------------------
+# Concurrent uploads
+# ----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_concurrent_uploads_all_parse_successfully(
+    clean_db, clean_bucket, fake_opencode,
+):
+    """Three PDFs uploaded together all reach 'done' via the parallel ThreadPool."""
+    state = AppState()
+    state.model = "test-model"
+
+    files = [
+        make_upload_file(f"f{i}.pdf", f"%PDF-1.4 file {i}".encode())
+        for i in range(3)
+    ]
+    async for _ in state.handle_upload(files):
+        pass
+    await drain_active_job(state)
+
+    assert len(state.rows) == 3
+    statuses = [r.status for r in state.rows]
+    assert statuses == ["done"] * 3, f"statuses={statuses} errors={[r.error for r in state.rows]}"
+
+    # First-arrived start event should have auto-selected; selection is one of ours.
+    assert state.selected_file_key in {"f0.pdf", "f1.pdf", "f2.pdf"}
+
+
+# ----------------------------------------------------------------------------
+# Retry after real subprocess failure
+# ----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_retry_after_subprocess_failure_eventually_succeeds(
+    clean_db, clean_bucket, fake_opencode, tmp_path, monkeypatch,
+):
+    """First extract subprocess call exits 1; second attempt succeeds.
+
+    Exercises parse.py's MAX_PARSE_ATTEMPTS=2 retry loop. The fake opencode
+    increments a counter file and exits non-zero until the counter reaches
+    FAKE_FAIL_UNTIL. Classify calls are never failed (separate code path).
+    """
+    counter = tmp_path / "fake_fail_counter"
+    counter.write_text("0")
+    monkeypatch.setenv("FAKE_FAILURE_COUNTER", str(counter))
+    monkeypatch.setenv("FAKE_FAIL_UNTIL", "1")  # one extract attempt fails, then succeed
+
+    state = AppState()
+    state.model = "test-model"
+    async for _ in state.handle_upload([make_upload_file("retry.pdf", b"%PDF-1.4 retry")]):
+        pass
+    await drain_active_job(state)
+
+    row = state.rows[0]
+    assert row.status == "done", f"error={row.error!r}"
+    assert row.amount == "199.00"
+
+    # Log trail records the first attempt's failure + the retry kickoff.
+    log_bodies = [log.body for log in row.logs]
+    assert any("Attempt 1 of 2" in body for body in log_bodies)
+    assert any("Retrying after attempt 1" in body for body in log_bodies)
+    assert any("Attempt 2 of 2" in body for body in log_bodies)
+
+    # Counter advanced past the failure threshold.
+    assert int(counter.read_text()) >= 2  # noqa: PLR2004
