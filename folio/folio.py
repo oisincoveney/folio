@@ -2,6 +2,7 @@
 
 import reflex as rx
 
+from folio.components.file_browser import file_browser
 from folio.components.file_picker import file_picker
 from folio.components.header import header
 from folio.components.results_table import results_table
@@ -27,6 +28,18 @@ def index() -> rx.Component:
     )
 
 
+def files_page() -> rx.Component:
+    """Render the /files file browser page."""
+    return rx.flex(
+        header(),
+        file_browser(),
+        direction="column",
+        height="100vh",
+        width="100%",
+        overflow="hidden",
+    )
+
+
 app = rx.App(
     theme=rx.theme(
         accent_color="indigo",
@@ -41,3 +54,4 @@ app = rx.App(
     },
 )
 app.add_page(index, on_load=AppState.load_models)
+app.add_page(files_page, route="/files", on_load=AppState.load_file_browser)

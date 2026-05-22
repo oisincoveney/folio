@@ -51,7 +51,7 @@ def test_try_extract_synthesizes_reference_from_direct_json():
 
     assert result is not None
     assert result.company == "Us Mobile"
-    assert result.paymentReference == "Us Mobile - Inv 830622196 - 1 GB Top Up"
+    assert result.payment_reference == "Us Mobile - Inv 830622196 - 1 GB Top Up"
 
 
 def test_try_extract_synthesizes_reference_from_markdown_fenced_json():
@@ -65,7 +65,7 @@ def test_try_extract_synthesizes_reference_from_markdown_fenced_json():
 
     assert result is not None
     assert result.company == "Us Mobile"
-    assert result.paymentReference == "Us Mobile - Inv 175234934 - 1 GB Top Up"
+    assert result.payment_reference == "Us Mobile - Inv 175234934 - 1 GB Top Up"
 
 
 def test_try_extract_accepts_numeric_amount_from_markdown_fenced_json():
@@ -80,7 +80,7 @@ def test_try_extract_accepts_numeric_amount_from_markdown_fenced_json():
     assert result is not None
     assert result.amount == "2.00"
     assert result.company == "Us Mobile"
-    assert result.paymentReference == "Us Mobile - Inv 404517374 - 1 GB Top Up"
+    assert result.payment_reference == "Us Mobile - Inv 404517374 - 1 GB Top Up"
 
 
 def test_try_extract_keeps_company_names_consistent_with_observed_batch_history():
@@ -102,6 +102,6 @@ def test_try_extract_keeps_company_names_consistent_with_observed_batch_history(
 
         assert result is not None
         assert result.company == "US Mobile"
-        assert result.targetCurrency == "USD"
+        assert result.target_currency == "USD"
         assert result.description == "1 Gb Top Up"
-        assert result.paymentReference == "US Mobile - Inv 830622196 - 1 Gb Top Up"
+        assert result.payment_reference == "US Mobile - Inv 830622196 - 1 Gb Top Up"

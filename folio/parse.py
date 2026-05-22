@@ -10,15 +10,23 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from io import TextIOWrapper
+from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError
 
-from folio.config import OPENCODE, PARSE_PROMPT
+if TYPE_CHECKING:
+    from io import TextIOWrapper
+
+from folio.config import CLASSIFY_PROMPT, DOC_TYPE_PROMPT, OPENCODE
+from folio.doc_models import (
+    BankTransactionData,
+    InvoiceData,
+    PayslipData,
+    TaxReceiptData,
+)
 from folio.normalization import (
     ObservedVendorNormalizer,
     clean_text,
-    normalize_amount,
     normalize_currency,
     normalize_date,
     normalize_description,
@@ -29,6 +37,15 @@ _pending: dict[str, str] = {}
 _pending_source: dict[str, str] = {}
 _pending_lock = threading.Lock()
 
+_DocModel = InvoiceData | BankTransactionData | TaxReceiptData | PayslipData
+
+_DOC_MODEL_MAP: dict[str, type[BaseModel]] = {
+    "invoice": InvoiceData,
+    "bank_statement": BankTransactionData,
+    "tax_receipt": TaxReceiptData,
+    "payslip": PayslipData,
+}
+
 PREFERRED_MODEL = "anthropic/claude-opus-4-7"
 _MODELS_TTL = 60.0
 MAX_PARSE_ATTEMPTS = 2
@@ -37,25 +54,6 @@ MAX_PARALLEL_PARSE = max(1, int(os.environ.get("FOLIO_PARSE_PARALLELISM", "3")))
 # Mutable containers avoid global reassignment while preserving module-level state.
 _models_cache: list[tuple[list[dict[str, str | bool]], float]] = [([], 0.0)]
 _vendor_normalizer: list[ObservedVendorNormalizer] = [ObservedVendorNormalizer()]
-
-
-class InvoiceData(BaseModel):
-    """Pydantic model for structured invoice data from opencode JSON output."""
-
-    amount: str
-    targetCurrency: str
-    company: str = ""
-    invoiceNumber: str = ""
-    invoiceDate: str = ""
-    description: str = ""
-    accountNumber: str = ""
-    paymentReference: str = ""
-
-    @field_validator("amount", mode="before")
-    @classmethod
-    def normalize_amount_field(cls, value: object) -> str:
-        """Normalize the amount field before validation."""
-        return normalize_amount(value)
 
 
 @dataclasses.dataclass
@@ -87,10 +85,10 @@ def reset_model_cache() -> None:
 def _groom_invoice_data(data: InvoiceData) -> InvoiceData:
     data.company = _vendor_normalizer[0].normalize(data.company)
     data.description = normalize_description(data.description)
-    data.invoiceNumber = normalize_invoice_number(data.invoiceNumber)
-    data.invoiceDate = normalize_date(data.invoiceDate)
-    data.accountNumber = clean_text(data.accountNumber)
-    data.targetCurrency = normalize_currency(data.targetCurrency)
+    data.invoice_number = normalize_invoice_number(data.invoice_number)
+    data.invoice_date = normalize_date(data.invoice_date)
+    data.account_number = clean_text(data.account_number)
+    data.target_currency = normalize_currency(data.target_currency)
     return data
 
 
@@ -107,9 +105,9 @@ def _dedupe_words(parts: list[str]) -> list[str]:
 
 def _synthesize_payment_reference(data: InvoiceData) -> str:
     company = _clean_reference_part(data.company)
-    invoice = _clean_reference_part(data.invoiceNumber)
+    invoice = _clean_reference_part(data.invoice_number)
     description = _clean_reference_part(data.description)
-    account = _clean_reference_part(data.accountNumber)
+    account = _clean_reference_part(data.account_number)
 
     parts = [company]
     if invoice:
@@ -121,7 +119,7 @@ def _synthesize_payment_reference(data: InvoiceData) -> str:
 
     reference = " - ".join(_dedupe_words([part for part in parts if part]))
     if not reference:
-        reference = _clean_reference_part(data.paymentReference)
+        reference = _clean_reference_part(data.payment_reference)
     if not reference:
         reference = company or description or invoice or account
     return reference[:80]
@@ -221,7 +219,7 @@ def claim_pending(file_id: str) -> tuple[str, bool] | None:
 
 def _with_reference(data: InvoiceData) -> InvoiceData:
     data = _groom_invoice_data(data)
-    data.paymentReference = _synthesize_payment_reference(data)
+    data.payment_reference = _synthesize_payment_reference(data)
     return data
 
 
@@ -237,6 +235,80 @@ def _try_extract(text: str) -> InvoiceData | None:
         except ValidationError:
             pass
     return None
+
+
+def _classify_doc(task: _ParseTask, q: queue.Queue) -> str:  # noqa: ARG001
+    """Run a classify pass; return the doc_type string, defaulting to 'invoice'."""
+    try:
+        result = subprocess.run(  # noqa: S603
+            [OPENCODE, "run", "--format", "json", "--file", task.pdf_path,
+             "-m", task.model, CLASSIFY_PROMPT],
+            capture_output=True, check=False, text=True, timeout=60,
+        )
+        for line in result.stdout.splitlines():
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if obj.get("type") != "text":
+                continue
+            text = obj.get("part", {}).get("text", "")
+            if not text:
+                continue
+            try:
+                doc_type = str(json.loads(text).get("doc_type", ""))
+            except (json.JSONDecodeError, AttributeError):
+                m = re.search(r'"doc_type"\s*:\s*"([^"]+)"', text)
+                doc_type = m.group(1) if m else ""
+            if doc_type in DOC_TYPE_PROMPT:
+                return doc_type
+    except Exception:  # noqa: BLE001, S110
+        pass
+    return "invoice"
+
+
+def _try_extract_typed(text: str, doc_type: str) -> _DocModel | None:
+    """Parse text as the given doc_type's model; apply invoice grooming if needed."""
+    model_cls = _DOC_MODEL_MAP.get(doc_type, InvoiceData)
+    pattern = (
+        r'\{[^{}]*"amount"[^{}]*\}' if doc_type == "invoice" else r"\{[^{}]*\}"
+    )
+
+    def _validate(t: str) -> _DocModel:
+        obj = model_cls.model_validate_json(t)  # type: ignore[union-attr]
+        if isinstance(obj, InvoiceData):
+            return _with_reference(obj)
+        return obj  # type: ignore[return-value]
+
+    try:
+        return _validate(text)
+    except ValidationError:
+        pass
+    m = re.search(pattern, text, re.DOTALL)
+    if m:
+        try:
+            return _validate(m.group())
+        except ValidationError:
+            pass
+    return None
+
+
+def _extract_typed_result(lines: list[str], doc_type: str) -> _DocModel:
+    """Extract and validate a typed doc model from opencode JSON output lines."""
+    for line in lines:
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if obj.get("type") != "text":
+            continue
+        text = obj.get("part", {}).get("text", "")
+        if text:
+            result = _try_extract_typed(text, doc_type)
+            if result:
+                return result
+    msg = "No parseable JSON found in opencode output"
+    raise ValueError(msg)
 
 
 def _extract_result(lines: list[str]) -> InvoiceData:
@@ -279,7 +351,9 @@ def _read_pipe(
         pipe.close()
 
 
-def _run_attempt(attempt: int, task: _ParseTask, q: queue.Queue) -> InvoiceData:
+def _run_attempt(
+    attempt: int, task: _ParseTask, q: queue.Queue, prompt: str, doc_type: str,
+) -> _DocModel:
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
 
@@ -294,7 +368,7 @@ def _run_attempt(attempt: int, task: _ParseTask, q: queue.Queue) -> InvoiceData:
 
     proc = subprocess.Popen(  # noqa: S603
         [OPENCODE, "run", "--format", "json", "--file", task.pdf_path,
-         "-m", task.model, PARSE_PROMPT],
+         "-m", task.model, prompt],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -333,12 +407,13 @@ def _run_attempt(attempt: int, task: _ParseTask, q: queue.Queue) -> InvoiceData:
             detail += "\n" + "\n".join(stderr_lines[-5:])
         raise RuntimeError(detail)
 
-    return _extract_result([line for line in stdout_lines if line.strip()])
+    nonempty = [line for line in stdout_lines if line.strip()]
+    return _extract_typed_result(nonempty, doc_type)
 
 
 def _emit_result(
     task: _ParseTask,
-    parsed: InvoiceData | None,
+    parsed: _DocModel | None,
     error: str,
     q: queue.Queue,
 ) -> None:
@@ -348,6 +423,8 @@ def _emit_result(
             "filename_original": task.orig_name,
             "file_key": task.file_key,
             "source_id": task.source_id,
+            "doc_type": "invoice",
+            "raw_data": {},
             "amount": "",
             "targetCurrency": "EUR",
             "company": "",
@@ -369,12 +446,14 @@ def _emit_result(
             _pending[file_id] = task.pdf_path
         else:
             _pending_source[file_id] = task.pdf_path
+    data = parsed.model_dump(by_alias=True)
     q.put({
         "type": "result",
         "filename_original": task.orig_name,
         "file_key": task.file_key,
         "source_id": task.source_id,
-        **parsed.model_dump(),
+        **data,
+        "raw_data": data,
         "file_id": file_id,
         "error": None,
         "index": task.index,
@@ -393,11 +472,14 @@ def _process_one(task: _ParseTask, q: queue.Queue) -> None:
         "model": task.model,
     })
 
-    parsed: InvoiceData | None = None
+    doc_type = _classify_doc(task, q)
+    prompt = DOC_TYPE_PROMPT[doc_type]
+
+    parsed: _DocModel | None = None
     last_error = ""
     for attempt in range(1, MAX_PARSE_ATTEMPTS + 1):
         try:
-            parsed = _run_attempt(attempt, task, q)
+            parsed = _run_attempt(attempt, task, q, prompt=prompt, doc_type=doc_type)
             break
         except Exception as e:  # noqa: BLE001
             last_error = str(e)

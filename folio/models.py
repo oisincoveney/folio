@@ -37,3 +37,5 @@ class InvoiceRow(BaseModel):
     description: str = ""
     account_number: str = ""
     payment_reference: str = ""
+    doc_type: str = "invoice"
+    raw_data: dict = {}

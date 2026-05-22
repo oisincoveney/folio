@@ -156,21 +156,18 @@ def _table_header() -> rx.Component:
             align="center",
         ),
         rx.flex(
-            rx.button(
-                rx.icon("folder", size=13),
+            rx.text(
+                rx.icon("database", size=12),
                 rx.cond(
-                    AppState.dest_dir != "",
-                    AppState.dest_dir,
-                    "Set folder",
+                    AppState.bucket_name != "",
+                    AppState.bucket_name,
+                    "No bucket configured",
                 ),
                 size="1",
-                variant="soft",
-                color_scheme="gray",
-                on_click=AppState.pick_folder,
-                max_width="160px",
-                overflow="hidden",
-                text_overflow="ellipsis",
-                white_space="nowrap",
+                color="var(--gray-9)",
+                display="flex",
+                align="center",
+                gap="1",
             ),
             rx.cond(
                 counts["done"] > 0,
