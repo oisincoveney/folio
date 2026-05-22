@@ -1,11 +1,11 @@
 ---
 id: FOLIO-10
 title: Improve app UI and simplify styling
-status: In Progress
+status: Done
 assignee:
   - Codex
 created_date: '2026-05-21 12:58'
-updated_date: '2026-05-21 13:02'
+updated_date: '2026-05-21 16:36'
 labels:
   - frontend
   - ui

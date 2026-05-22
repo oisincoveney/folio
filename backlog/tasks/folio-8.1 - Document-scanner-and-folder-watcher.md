@@ -4,7 +4,7 @@ title: Switch from user-selected destination to app-managed storage directory
 status: To Do
 assignee: []
 created_date: '2026-05-20 22:50'
-updated_date: '2026-05-21 09:56'
+updated_date: '2026-05-21 21:48'
 labels:
   - ingestion
   - filesystem
@@ -19,18 +19,15 @@ ordinal: 1000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Currently the /save endpoint requires the user to pick a destination folder (dest_dir) each time via the osascript folder picker. Instead, the user should configure a storage root path once — pointing it at their existing accounting folder — and the app always saves there from that point on.
-
-The file renaming logic (build_invoice_filename in storage.py) and the payments.csv append (append_csv_row) already work correctly and should be kept as-is. This task is about replacing the per-save folder picker with a one-time configurable path and applying the month-based folder structure (e.g. 2025-01/invoices/, 2025-01/bank-statements/) within that root.
+Replace the per-save osascript folder picker with S3-compatible bucket storage. The app saves all documents to a configured bucket using month-based object key prefixes. Configuration is via env vars (no config file). A file browser UI lets the user browse and download documents by month.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The storage root path is configurable once via a settings UI or env var, persisted between sessions
-- [ ] #2 The /save endpoint uses the configured root — no dest_dir in the request body, no folder picker on each save
-- [ ] #3 The /pick-folder route and osascript folder picker are removed
-- [ ] #4 Files are saved into month-based subfolders within the root: <root>/YYYY-MM/invoices/, /bank-statements/, /work-orders/, /exports/
-- [ ] #5 Existing build_invoice_filename and append_csv_row logic is unchanged
-- [ ] #6 The configured storage path is visible in the UI so the user knows where files are going
-- [ ] #7 The storage directory and month subfolders are created automatically if they do not exist
+- [ ] #1 FOLIO_BUCKET_NAME, FOLIO_BUCKET_ENDPOINT, FOLIO_BUCKET_ACCESS_KEY, FOLIO_BUCKET_SECRET_KEY, FOLIO_BUCKET_REGION env vars configure the bucket
+- [ ] #2 Files are saved as s3://bucket/YYYY-MM/invoices|bank-statements|tax-receipts|payslips/filename.pdf
+- [ ] #3 payments.csv is per-month at s3://bucket/YYYY-MM/payments.csv (invoice rows only)
+- [ ] #4 dest_dir state var, pick_folder(), handle_folder_source(), and osascript calls are removed
+- [ ] #5 The configured bucket name is shown in the UI in place of the old folder path
+- [ ] #6 A /files page lets the user browse documents by month and download individual files via presigned URLs
 <!-- AC:END -->

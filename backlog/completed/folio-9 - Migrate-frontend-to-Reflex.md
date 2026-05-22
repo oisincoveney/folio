@@ -1,9 +1,10 @@
 ---
 id: FOLIO-9
 title: Migrate frontend to Reflex
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-21 10:05'
+updated_date: '2026-05-21 16:36'
 labels:
   - frontend
   - reflex
