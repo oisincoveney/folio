@@ -1,10 +1,10 @@
 ---
 id: FOLIO-8.3
-title: Add SQLite database with SQLModel for the financial data store
-status: To Do
+title: Add Postgres financial data store via rx.Model
+status: In Progress
 assignee: []
 created_date: '2026-05-20 22:51'
-updated_date: '2026-05-21 21:48'
+updated_date: '2026-05-22 13:30'
 labels:
   - database
   - storage
@@ -22,11 +22,17 @@ Add PostgreSQL as the financial data store using Reflex's built-in rx.Model (SQL
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 DATABASE_URL env var configures the PostgreSQL connection; rxconfig.py reads it
-- [ ] #2 rx.Model table classes exist for all four document types from FOLIO-8.2
-- [ ] #3 Each table has a composite unique constraint on (file_key, content_hash) for upsert deduplication
-- [ ] #4 Extracted records are persisted after each successful save via on_conflict_do_update
-- [ ] #5 Query classmethods exist on the model classes: income by year/quarter, tax by jurisdiction, outstanding invoices, EUR/USD totals
-- [ ] #6 The existing payments.csv append flow is unchanged
+- [x] #1 DATABASE_URL env var configures the PostgreSQL connection; rxconfig.py reads it
+- [x] #2 rx.Model table classes exist for all four document types from FOLIO-8.2
+- [x] #3 Each table has a composite unique constraint on (file_key, content_hash) for upsert deduplication
+- [x] #4 Extracted records are persisted after each successful save via on_conflict_do_update
+- [x] #5 Query classmethods exist on the model classes: income by year/quarter, tax by jurisdiction, outstanding invoices, EUR/USD totals
+- [x] #6 The existing payments.csv append flow is unchanged
 - [ ] #7 Schema is managed with reflex db makemigrations / reflex db upgrade
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+folio/db_models.py shipped in commit cfabeb7 with InvoiceRecord, BankTransactionRecord, TaxReceiptRecord, PayslipRecord — all extending a shared _RecordBase with the upsert() helper (pg_insert + on_conflict_do_update on the file_key/content_hash unique constraint). Query classmethods: by_year(year, quarter), outstanding(), InvoiceRecord.eur_usd_totals(year), TaxReceiptRecord.by_jurisdiction(j). AC #7 still open: no alembic migrations have been generated — needs `reflex db makemigrations` + committing the generated versions/ file before this can ship to prod.
+<!-- SECTION:NOTES:END -->

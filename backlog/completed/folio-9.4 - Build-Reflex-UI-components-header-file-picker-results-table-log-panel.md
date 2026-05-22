@@ -1,10 +1,10 @@
 ---
 id: FOLIO-9.4
 title: 'Build Reflex UI components: header, file picker, results table, log panel'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-21 10:24'
-updated_date: '2026-05-21 10:25'
+updated_date: '2026-05-22 13:29'
 labels:
   - frontend
   - reflex
@@ -55,12 +55,18 @@ Create folio/components/ with one file per component. Style with Tailwind classe
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 folio/components/ contains header.py, file_picker.py, results_table.py, log_panel.py
-- [ ] #2 Each file exports a single component function that accepts no required arguments and reads from AppState
-- [ ] #3 Model dropdown renders all models and calls update_model on change
-- [ ] #4 rx.upload component is used for file selection with PDF accept filter
-- [ ] #5 Results table renders rows from AppState.rows and highlights the selected row
-- [ ] #6 Editable fields in the right panel update the corresponding row dict in AppState.rows
-- [ ] #7 Log panel displays log entries for AppState.selected_row
-- [ ] #8 No JavaScript files are introduced — all interactivity is via Reflex event handlers
+- [x] #1 folio/components/ contains header.py, file_picker.py, results_table.py, log_panel.py
+- [x] #2 Each file exports a single component function that accepts no required arguments and reads from AppState
+- [x] #3 Model dropdown renders all models and calls update_model on change
+- [x] #4 rx.upload component is used for file selection with PDF accept filter
+- [x] #5 Results table renders rows from AppState.rows and highlights the selected row
+- [x] #6 Editable fields in the right panel update the corresponding row dict in AppState.rows
+- [x] #7 Log panel displays log entries for AppState.selected_row
+- [x] #8 No JavaScript files are introduced — all interactivity is via Reflex event handlers
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Shipped in commit ba2bddd. folio/components/ contains header.py, file_picker.py, results_table.py, and log_panel.py, each a single component function reading from AppState. Styling uses Radix theme tokens via rx primitives — no JS files introduced.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,10 +1,10 @@
 ---
 id: FOLIO-9.2
 title: Port Alpine.js store to Reflex AppState with non-streaming event handlers
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-21 10:23'
-updated_date: '2026-05-21 10:25'
+updated_date: '2026-05-22 13:29'
 labels:
   - frontend
   - reflex
@@ -54,11 +54,17 @@ Do not implement handle_upload, save, retry, or streaming in this subtask.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 folio/state.py exists and defines AppState(rx.State)
-- [ ] #2 All state vars listed above are present with correct types and defaults
-- [ ] #3 load_models populates self.models by calling parse.get_model_options()
-- [ ] #4 pick_folder runs osascript and sets self.dest_dir (or sets empty string if cancelled)
-- [ ] #5 reset, select_row, and update_model handlers exist
-- [ ] #6 selected_row and status_counts computed vars are defined
-- [ ] #7 No import of Flask anywhere in folio/
+- [x] #1 folio/state.py exists and defines AppState(rx.State)
+- [x] #2 All state vars listed above are present with correct types and defaults
+- [x] #3 load_models populates self.models by calling parse.get_model_options()
+- [x] #4 pick_folder runs osascript and sets self.dest_dir (or sets empty string if cancelled)
+- [x] #5 reset, select_row, and update_model handlers exist
+- [x] #6 selected_row and status_counts computed vars are defined
+- [x] #7 No import of Flask anywhere in folio/
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Shipped in commit ba2bddd. AppState(rx.State) lives in folio/state.py with all listed vars and the non-streaming handlers (load_models, pick_folder, select_row, clear_session, update_model) plus selected_row / status_counts computed vars. pick_folder and dest_dir were later removed by FOLIO-8.1 when storage moved to S3.
+<!-- SECTION:FINAL_SUMMARY:END -->

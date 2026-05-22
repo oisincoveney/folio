@@ -3,10 +3,10 @@ id: FOLIO-9.3
 title: >-
   Implement upload handler, parse streaming bridge, save, and retry event
   handlers
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-21 10:24'
-updated_date: '2026-05-21 10:25'
+updated_date: '2026-05-22 13:29'
 labels:
   - frontend
   - reflex
@@ -57,9 +57,15 @@ Key constraint: parse.py, storage.py, normalization.py, config.py must not be mo
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 handle_upload accepts files, saves to .folio_uploads/, calls start_parse_job, and starts _stream_parse background task
-- [ ] #2 _stream_parse consumes the queue.Queue via asyncio.to_thread and updates self.rows/self.completed matching the handleEvent logic in store.js
-- [ ] #3 save_rows calls claim_pending + build_invoice_filename + shutil.move + append_csv_row for each confirmed row
-- [ ] #4 retry_row and retry_failed reset row status and trigger a new parse job for staged files
-- [ ] #5 No HTTP routes or Flask imports anywhere in folio/
+- [x] #1 handle_upload accepts files, saves to .folio_uploads/, calls start_parse_job, and starts _stream_parse background task
+- [x] #2 _stream_parse consumes the queue.Queue via asyncio.to_thread and updates self.rows/self.completed matching the handleEvent logic in store.js
+- [x] #3 save_rows calls claim_pending + build_invoice_filename + shutil.move + append_csv_row for each confirmed row
+- [x] #4 retry_row and retry_failed reset row status and trigger a new parse job for staged files
+- [x] #5 No HTTP routes or Flask imports anywhere in folio/
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Shipped in commit ba2bddd. handle_upload, stream_parse (background task consuming parse.start_parse_job's queue via asyncio.to_thread), save_row/save_all_done, and retry_row/retry_failed/run_retry_queue all live in folio/state.py. No Flask imports remain.
+<!-- SECTION:FINAL_SUMMARY:END -->
