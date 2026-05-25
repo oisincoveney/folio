@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -65,3 +65,27 @@ jobs:
             ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+
+      - name: Pin production manifest to image tag
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          path = Path("k8s/overlays/prod/kustomization.yaml")
+          text = path.read_text()
+          text = re.sub(r"(?m)^(\s*newTag:\s*).*$", rf"\g<1>{os.environ['GITHUB_SHA']}", text, count=1)
+          path.write_text(text)
+          PY
+
+      - name: Commit production image tag
+        run: |
+          if git diff --quiet -- k8s/overlays/prod/kustomization.yaml; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add k8s/overlays/prod/kustomization.yaml
+          git commit -m "Deploy Folio image ${GITHUB_SHA}"
+          git push

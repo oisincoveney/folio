@@ -94,6 +94,10 @@ RUN --mount=type=cache,target=/root/.npm \
 # --- runtime (final prod image) ---------------------------------------------
 FROM syscommon AS runtime
 
+LABEL org.opencontainers.image.source="https://github.com/oisincoveney/folio" \
+      org.opencontainers.image.description="Folio production Reflex app image" \
+      org.opencontainers.image.licenses="UNLICENSED"
+
 # Drop privileges. The app reads/writes /app/.web/_states at runtime (Reflex
 # on-disk state manager) so /app must be writable by `folio`.
 RUN useradd --create-home --uid 1000 --shell /bin/sh folio \
