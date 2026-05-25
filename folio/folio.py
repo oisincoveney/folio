@@ -2,11 +2,13 @@
 
 import reflex as rx
 
+from folio.components.data_view import data_page
 from folio.components.file_browser import file_browser
 from folio.components.file_picker import file_picker
 from folio.components.header import header
 from folio.components.results_table import results_table
 from folio.states.batch import BatchState
+from folio.states.data_view import DataViewState
 from folio.states.file_browser import FileBrowserState
 
 
@@ -56,3 +58,4 @@ app = rx.App(
 )
 app.add_page(index, on_load=BatchState.load_models)
 app.add_page(files_page, route="/files", on_load=FileBrowserState.load_file_browser)
+app.add_page(data_page, route="/data", on_load=DataViewState.load)
