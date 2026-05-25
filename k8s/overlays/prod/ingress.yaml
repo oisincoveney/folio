@@ -1,0 +1,70 @@
+# Public Ingress for folio.momokaya.ee.
+#
+# Reflex runs a frontend on :3000 (Next.js static export served by the same
+# container) and a backend on :8000 (FastAPI; serves the websocket at /_event,
+# uploads at /_upload, and a handful of utility routes — see
+# reflex_base/constants/event.py). The frontend client connects to whatever
+# API_URL is set to at build time, so for prod we point API_URL at the public
+# URL (set in kustomization.yaml configMapGenerator) and route the known
+# backend paths to :8000 here. Everything else falls through to :3000.
+#
+# If Reflex adds a backend route in a future version, add it to this list or
+# the websocket / upload / health probes will 404.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: folio
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: folio.momokaya.ee
+      http:
+        paths:
+          - path: /_event
+            pathType: Prefix
+            backend:
+              service:
+                name: folio
+                port:
+                  number: 8000
+          - path: /_upload
+            pathType: Prefix
+            backend:
+              service:
+                name: folio
+                port:
+                  number: 8000
+          - path: /_health
+            pathType: Prefix
+            backend:
+              service:
+                name: folio
+                port:
+                  number: 8000
+          - path: /_all_routes
+            pathType: Exact
+            backend:
+              service:
+                name: folio
+                port:
+                  number: 8000
+          - path: /ping
+            pathType: Exact
+            backend:
+              service:
+                name: folio
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: folio
+                port:
+                  number: 3000
+  tls:
+    - hosts:
+        - folio.momokaya.ee
+      secretName: folio-tls

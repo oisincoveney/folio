@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args: ["server", "/data", "--console-address", ":9001"]
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: folio-secrets
+                  key: FOLIO_BUCKET_ACCESS_KEY
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: folio-secrets
+                  key: FOLIO_BUCKET_SECRET_KEY
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 2
+            periodSeconds: 5
+      volumes:
+        - name: minio-data
+          persistentVolumeClaim:
+            claimName: minio-data
+---
+# One-shot bucket creation against the cluster-internal minio service.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-create-bucket
+spec:
+  ttlSecondsAfterFinished: 60
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:latest
+          envFrom:
+            - configMapRef:
+                name: folio-config
+            - secretRef:
+                name: folio-secrets
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              until mc alias set local "$FOLIO_BUCKET_ENDPOINT" "$FOLIO_BUCKET_ACCESS_KEY" "$FOLIO_BUCKET_SECRET_KEY" > /dev/null 2>&1; do
+                sleep 1
+              done
+              mc mb --ignore-existing local/"$FOLIO_BUCKET_NAME"

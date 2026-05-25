@@ -1,0 +1,29 @@
+# Prod overlay: switch from the locally-built `folio:latest` to the GHCR image,
+# add the ghcr-pull-secret reference, and declare both container ports (the
+# base Deployment only declares 3000, which is informational but matters for
+# tools that inspect the spec).
+#
+# Image tag is set via the kustomization.yaml `images:` directive — do not hard-
+# code a tag here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: folio
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      initContainers:
+        - name: db-migrate
+          image: folio
+          imagePullPolicy: IfNotPresent
+      containers:
+        - name: folio
+          image: folio
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: frontend
+              containerPort: 3000
+            - name: backend
+              containerPort: 8000

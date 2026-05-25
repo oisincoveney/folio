@@ -11,5 +11,5 @@ spec:
       targetPort: 3000
     - name: backend
       port: 8000
-      targetPort: 8000
+      targetPort: 3000
   type: ClusterIP

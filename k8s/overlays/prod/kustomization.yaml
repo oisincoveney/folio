@@ -1,0 +1,50 @@
+# Production overlay for the momokaya cluster.
+#
+# Layered on top of the base manifests with:
+#   - production image (ghcr.io/oisin-ee/folio) + pull secret
+#   - Traefik Ingress + cert-manager TLS at folio.momokaya.ee
+#   - service-port fix (base service routes backend port 8000 -> targetPort
+#     3000, which is wrong; in prod we route 8000 -> 8000 so the Ingress can
+#     reach the Reflex backend)
+#   - prod configmap values (bucket name, in-cluster Minio endpoint, API_URL)
+#
+# `folio-secrets` and `ghcr-pull-secret` are NOT included here — they live as
+# SealedSecret manifests in oisin-ee/infra under
+# k8s/manifests/folio/sealed-secrets/ and are synced into the folio namespace
+# by a separate ArgoCD Application with sync-wave "-10".
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: folio
+
+resources:
+  - ../../base
+  - ingress.yaml
+
+images:
+  - name: folio
+    newName: ghcr.io/oisin-ee/folio
+    # Bump per release; match the tag pushed by the release CI.
+    newTag: TAG_PLACEHOLDER
+
+patches:
+  - path: deployment-patch.yaml
+    target:
+      kind: Deployment
+      name: folio
+  - path: service-patch.yaml
+    target:
+      kind: Service
+      name: folio
+
+# Merge prod values on top of the base configmap.
+configMapGenerator:
+  - name: folio-config
+    behavior: merge
+    literals:
+      - FOLIO_BUCKET_NAME=folio-prod
+      - FOLIO_BUCKET_ENDPOINT=http://minio.folio.svc.cluster.local:9000
+      - FOLIO_BUCKET_REGION=us-east-1
+      # api_url must match the public URL the browser hits, otherwise the
+      # Reflex frontend tries to connect its websocket to localhost:8000.
+      - API_URL=https://folio.momokaya.ee

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: folio-config
+data:
+  # Non-sensitive local development config.
+  POSTGRES_USER: folio
+  FOLIO_BUCKET_NAME: folio-local
+  FOLIO_BUCKET_ENDPOINT: http://minio:9000
+  FOLIO_BUCKET_REGION: us-east-1

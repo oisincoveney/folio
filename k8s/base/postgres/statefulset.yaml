@@ -23,8 +23,8 @@ spec:
               value: folio
             - name: POSTGRES_USER
               valueFrom:
-                secretKeyRef:
-                  name: folio-secrets
+                configMapKeyRef:
+                  name: folio-config
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
