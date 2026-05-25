@@ -45,6 +45,10 @@ configMapGenerator:
       - FOLIO_BUCKET_NAME=folio-prod
       - FOLIO_BUCKET_ENDPOINT=http://minio.folio.svc.cluster.local:9000
       - FOLIO_BUCKET_REGION=us-east-1
-      # api_url must match the public URL the browser hits, otherwise the
-      # Reflex frontend tries to connect its websocket to localhost:8000.
-      - API_URL=https://folio.momokaya.ee
+      # Reflex reads `api_url` from `REFLEX_API_URL` (the `REFLEX_` prefix is
+      # hardcoded in reflex_base/config.py:_prefixes). At container start,
+      # `reflex run --env prod` writes this into web/env.json via
+      # `set_env_json()` and then `next build` bundles it into the static
+      # frontend. If this is missing or wrong, the frontend tries to open its
+      # websocket to localhost:8000 and the app fails to load in the browser.
+      - REFLEX_API_URL=https://folio.momokaya.ee
