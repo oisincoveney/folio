@@ -22,7 +22,7 @@ resources:
 images:
   - name: folio
     newName: ghcr.io/oisincoveney/folio
-    newTag: latest
+    newTag: 267a26eb35f0ce03a98b90356b55c7fe8d70b076
 
 patches:
   - path: deployment-patch.yaml
