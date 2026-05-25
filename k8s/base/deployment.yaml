@@ -38,14 +38,30 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
-              name: frontend
+              name: http
           envFrom:
             - configMapRef:
                 name: folio-config
             - secretRef:
                 name: folio-secrets
-          readinessProbe:
-            tcpSocket:
+          # The image doesn't prebuild the Next.js frontend; `reflex run
+          # --env prod` triggers a full `next build` at container startup that
+          # can take a few minutes. Until startupProbe passes, readiness and
+          # liveness are suspended.
+          startupProbe:
+            httpGet:
+              path: /_health
               port: 3000
-            initialDelaySeconds: 5
             periodSeconds: 5
+            failureThreshold: 120 # ~10 minutes
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: 3000
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /_health
+              port: 3000
+            periodSeconds: 10
+            failureThreshold: 3

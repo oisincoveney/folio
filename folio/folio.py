@@ -44,11 +44,6 @@ def files_page() -> rx.Component:
 
 
 app = rx.App(
-    theme=rx.theme(
-        accent_color="indigo",
-        gray_color="slate",
-        radius="small",
-    ),
     stylesheets=[
         "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap",
     ],

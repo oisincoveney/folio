@@ -17,6 +17,7 @@ namespace: folio
 resources:
   - ../../base
   - ingress.yaml
+  - postgres-backup-cronjob.yaml
 
 images:
   - name: folio
@@ -29,6 +30,7 @@ patches:
     target:
       kind: Deployment
       name: folio
+  - path: pvc-patches.yaml
 
 # Merge prod values on top of the base configmap.
 configMapGenerator:

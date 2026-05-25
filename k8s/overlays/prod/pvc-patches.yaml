@@ -1,0 +1,21 @@
+# Pin prod PVCs to the `longhorn-retain` StorageClass so a stray `kubectl
+# delete pvc` (or an ArgoCD prune of a removed PVC resource) leaves the
+# Longhorn volume in `Released` state with the data intact, rather than
+# deleting it. The `longhorn-retain` SC ships from oisin-ee/infra under
+# k8s/manifests/folio/storage-class.yaml and is synced into the cluster by
+# the `folio-pre` ArgoCD Application with sync-wave -10.
+#
+# Local k3d has no Longhorn; the local overlay does not apply these patches.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+spec:
+  storageClassName: longhorn-retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+spec:
+  storageClassName: longhorn-retain
