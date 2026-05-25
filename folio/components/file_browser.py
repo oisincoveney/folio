@@ -97,22 +97,49 @@ def file_browser() -> rx.Component:
                         justify="center",
                         height="100%",
                     ),
-                    rx.table.root(
-                        rx.table.header(
-                            rx.table.row(
-                                rx.table.column_header_cell("File"),
-                                rx.table.column_header_cell(
-                                    "Size (bytes)", align="right",
-                                ),
-                                rx.table.column_header_cell("Modified", align="right"),
-                                rx.table.column_header_cell("", align="right"),
+                    rx.vstack(
+                        rx.flex(
+                            rx.text(
+                                FileBrowserState.browser_month,
+                                size="2",
+                                weight="medium",
+                                color="var(--gray-12)",
                             ),
+                            rx.button(
+                                rx.icon("archive", size=14),
+                                "Download all",
+                                size="1",
+                                variant="soft",
+                                disabled=current_files.length() == 0,
+                                on_click=FileBrowserState.download_month_zip(
+                                    FileBrowserState.browser_month,
+                                ),
+                            ),
+                            justify="between",
+                            align="center",
+                            width="100%",
                         ),
-                        rx.table.body(
-                            rx.foreach(current_files, _file_row),
+                        rx.table.root(
+                            rx.table.header(
+                                rx.table.row(
+                                    rx.table.column_header_cell("File"),
+                                    rx.table.column_header_cell(
+                                        "Size (bytes)", align="right",
+                                    ),
+                                    rx.table.column_header_cell(
+                                        "Modified", align="right",
+                                    ),
+                                    rx.table.column_header_cell("", align="right"),
+                                ),
+                            ),
+                            rx.table.body(
+                                rx.foreach(current_files, _file_row),
+                            ),
+                            width="100%",
+                            variant="surface",
                         ),
+                        gap="3",
                         width="100%",
-                        variant="surface",
                     ),
                 ),
             ),

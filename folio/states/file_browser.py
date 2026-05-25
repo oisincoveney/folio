@@ -5,6 +5,7 @@ from __future__ import annotations
 import reflex as rx
 
 from folio import aws
+from folio.services import exports
 
 
 class FileBrowserState(rx.State):
@@ -55,3 +56,11 @@ class FileBrowserState(rx.State):
             ExpiresIn=300,
         )
         return rx.redirect(url)  # pyright: ignore[reportReturnType]
+
+    def download_month_zip(self, month: str) -> rx.event.EventSpec | None:
+        """Build a zip of every file in ``month`` and trigger a browser download."""
+        files = self.browser_files.get(month, [])
+        if not files:
+            return None
+        data = exports.build_month_zip(aws.s3(), aws.bucket_name(), files)
+        return rx.download(data=data, filename=f"folio-{month}.zip")
