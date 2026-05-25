@@ -52,7 +52,7 @@ def test_payslip_normalises_all_numeric_fields():
 
 
 def test_invoice_data_importable_from_parse():
-    from folio.parse import InvoiceData as ParseInvoiceData
+    from folio.services.parser import InvoiceData as ParseInvoiceData
 
     assert ParseInvoiceData is InvoiceData
 

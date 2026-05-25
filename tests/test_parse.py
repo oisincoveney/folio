@@ -1,4 +1,4 @@
-from folio import parse
+from folio.services import parser as parse
 
 
 def setup_function():
@@ -40,6 +40,13 @@ def test_get_default_model_prefers_opus_4_7(monkeypatch):
     )
 
     assert parse.get_default_model() == "anthropic/claude-opus-4-7"
+
+
+def test_get_model_options_returns_empty_when_opencode_is_missing(monkeypatch):
+    monkeypatch.setattr(parse, "OPENCODE", "definitely-not-installed-opencode")
+
+    assert parse.get_model_options() == []
+    assert parse.get_default_model() == ""
 
 
 def test_try_extract_synthesizes_reference_from_direct_json():

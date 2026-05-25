@@ -15,7 +15,7 @@ import pytest
 import reflex as rx
 from sqlmodel import select
 
-from folio import parse as parse_mod
+from folio.services import parser as parse_mod
 from folio.db_models import InvoiceRecord
 from folio.models import InvoiceRow
 from folio.state import AppState

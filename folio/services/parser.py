@@ -168,22 +168,31 @@ def get_model_options() -> list[dict[str, str | bool]]:
     if cached and (time.monotonic() - ts) < _MODELS_TTL:
         return cached
 
-    result = subprocess.run(  # noqa: S603
-        [OPENCODE, "models", "--verbose"],
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=15,
-    )
-    models = _parse_verbose_models(result.stdout)
-    if not models:
+    try:
         result = subprocess.run(  # noqa: S603
-            [OPENCODE, "models"],
+            [OPENCODE, "models", "--verbose"],
             capture_output=True,
             check=False,
             text=True,
-            timeout=10,
+            timeout=15,
         )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        _models_cache[0] = ([], time.monotonic())
+        return []
+
+    models = _parse_verbose_models(result.stdout)
+    if not models:
+        try:
+            result = subprocess.run(  # noqa: S603
+                [OPENCODE, "models"],
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=10,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            _models_cache[0] = ([], time.monotonic())
+            return []
         models = [
             {"id": line.strip(), "pdf": False}
             for line in result.stdout.splitlines()

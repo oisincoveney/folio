@@ -22,7 +22,7 @@ from pathlib import Path
 import polars as pl
 from sqlmodel import select
 
-from folio import parse as parse_mod
+from folio.services import parser as parse_mod
 from folio.models import InvoiceRow
 from folio.state import AppState
 

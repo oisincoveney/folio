@@ -216,9 +216,9 @@ print(json.dumps({"type": "text", "part": {"text": json.dumps(payload)}}))
 
 @pytest.fixture
 def fake_opencode(tmp_path, monkeypatch):
-    """Write a fake opencode binary to disk and patch folio.parse.OPENCODE."""
+    """Write a fake opencode binary to disk and patch folio.services.parser.OPENCODE."""
     script = tmp_path / "fake_opencode"
     script.write_text(_FAKE_OPENCODE)
     script.chmod(script.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    monkeypatch.setattr("folio.parse.OPENCODE", str(script))
+    monkeypatch.setattr("folio.services.parser.OPENCODE", str(script))
     return script

@@ -24,7 +24,7 @@ import pytest
 import reflex as rx
 from sqlmodel import select
 
-from folio import parse as parse_mod
+from folio.services import parser as parse_mod
 from folio.config import CSV_COLUMNS, STATIC_FIELDS
 from folio.db_models import (
     BankTransactionRecord,

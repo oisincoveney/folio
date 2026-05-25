@@ -7,7 +7,7 @@ snake_case fields throughout and serialise as-is.
 
 import queue
 
-from folio import parse
+from folio.services import parser as parse
 from folio.doc_models import (
     BankTransactionData,
     InvoiceData,

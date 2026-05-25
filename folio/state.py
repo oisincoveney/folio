@@ -15,7 +15,7 @@ import boto3
 import reflex as rx
 from botocore.exceptions import ClientError
 
-from folio import parse as parse_mod
+from folio.services import parser as parse_mod
 from folio import storage as storage_mod
 from folio.db_models import (
     BankTransactionRecord,
@@ -25,7 +25,7 @@ from folio.db_models import (
 )
 from folio.log_parser import parse_opencode_line, system_log
 from folio.models import InvoiceRow, LogEntry
-from folio.parse import start_parse_job
+from folio.services.parser import start_parse_job
 
 _RECORD_CLS = {
     "invoice": InvoiceRecord,
