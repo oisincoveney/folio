@@ -61,6 +61,21 @@ def _model_section(title: str, models: rx.Var) -> rx.Component:
     )
 
 
+def _nav_link(label: str, href: str) -> rx.Component:
+    """Render a primary navigation link, accent-highlighted when active."""
+    return rx.link(
+        rx.text(label, size="2", weight="medium"),
+        href=href,
+        color=rx.cond(
+            rx.State.router.page.path == href,
+            "var(--accent-11)",
+            "var(--gray-11)",
+        ),
+        _hover={"color": "var(--accent-11)"},
+        text_decoration="none",
+    )
+
+
 def header() -> rx.Component:
     """Render the top header bar."""
     return rx.flex(
@@ -71,6 +86,13 @@ def header() -> rx.Component:
             color="var(--gray-12)",
             font_family="'IBM Plex Mono', monospace",
             letter_spacing="-0.02em",
+        ),
+        rx.flex(
+            _nav_link("Parse", "/"),
+            _nav_link("Files", "/files"),
+            _nav_link("Data", "/data"),
+            gap="4",
+            align="center",
         ),
         rx.flex(
             rx.popover.root(
