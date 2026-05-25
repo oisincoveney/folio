@@ -5,7 +5,7 @@ status: Done
 assignee:
   - Codex
 created_date: '2026-05-25 13:29'
-updated_date: '2026-05-25 13:46'
+updated_date: '2026-05-25 14:25'
 labels:
   - infra
   - docker
@@ -63,6 +63,8 @@ Fix the Docker/deployment setup so the prebuilt Reflex frontend cannot accidenta
 Implemented Docker fail-fast behavior for missing REFLEX_API_URL, production URL baking for Reflex env/sitemap via rxconfig.py deploy_url, docker-compose localhost build args, prod Kustomize latest image with Always pull policy, and infra ArgoCD folio/folio-secrets Applications plus an empty folio sealed-secrets kustomization path. Validation run: `docker build --target runtime` without REFLEX_API_URL fails with the intended clear error; `docker build --target base -t folio-review:base .` succeeds; `docker build --target runtime --build-arg REFLEX_API_URL=https://folio.momokaya.ee -t folio-review:runtime-prodarg .` succeeds; generated Reflex env asset and sitemap contain `https://folio.momokaya.ee` / `wss://folio.momokaya.ee`; `docker compose config --no-env-resolution` and `docker compose build folio` succeed; `kubectl kustomize k8s/overlays/prod` renders `ghcr.io/oisin-ee/folio:latest` with `imagePullPolicy: Always`; `kubectl kustomize /Users/oisin/dev/infra/k8s/manifests/folio/sealed-secrets` exits 0 with empty output; Ruby YAML parse validates the new infra Application YAML. `kubectl create --dry-run=client` could not validate Argo Application CRDs locally because the ArgoCD CRD is not installed in the current Kubernetes context. `mise run check`, `uv run ruff check rxconfig.py`, and `uv run python -m py_compile rxconfig.py` pass. Reflex export still warns about existing invalid icon tag `wand_2`, which is unrelated to this Docker/deploy fix.
 
 Follow-up cleanup: replaced invalid Reflex/Lucide icon name `wand_2` with `wand_sparkles` in `folio/components/log_panel.py`. `uv run ruff check folio/components/log_panel.py` passes, and a fresh production Docker build with `REFLEX_API_URL=https://folio.momokaya.ee` no longer emits the invalid icon warning.
+
+Deployment follow-through completed after initial Docker/GitOps work. Added the real folio sealed secrets and GHCR pull secret flow in infra, fixed the Argo repo URL to `https://github.com/oisincoveney/folio`, added the missing `longhorn-retain` StorageClass prerequisite, set Postgres `PGDATA` to a data subdirectory so Longhorn `lost+found` does not break initdb, switched Polars to `polars[rtcompat]` after the amd64 cluster hit illegal-instruction exit 132, and removed the MinIO bucket job TTL so Argo does not keep recreating the completed job. Built and pushed the working amd64 image `ghcr.io/oisin-ee/folio:latest@sha256:142c8d3bfc05ed67a1db70c47d7830591f913c25367f43cec0c77af2222ab81b`. Live verification: Folio deployment is 1/1 ready, Postgres and MinIO are running, the bucket job completed, the TLS certificate is Ready, and `curl -I https://folio.momokaya.ee/` returns HTTP 200. Argo reports `folio` as Synced but Progressing, consistent with the cluster's other Traefik ingress apps that have no ingress ADDRESS populated; `folio-secrets` is Synced/Healthy.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
@@ -88,4 +90,6 @@ Validation:
 
 Notes:
 - The actual encrypted `folio-secrets` and `ghcr-pull-secret` payloads are still not present in this work; only the GitOps Application/path wiring was added.
+
+Follow-up deployment verification and fixes: generated and wired the real encrypted Folio secrets and pull secret, added the missing Longhorn retain storage class, fixed Postgres initialization on Longhorn volumes, rebuilt/pushed a linux/amd64 runtime image, changed Polars to the compatible runtime for the cluster CPU, and kept the MinIO bucket job around for Argo health accounting. The live app now serves `https://folio.momokaya.ee/` with HTTP 200 and the runtime pod is ready with zero restarts.
 <!-- SECTION:FINAL_SUMMARY:END -->
