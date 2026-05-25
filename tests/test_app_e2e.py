@@ -75,7 +75,7 @@ async def test_upload_parse_save_end_to_end(s3, clean_db, clean_bucket, monkeypa
     monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
 
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
     async for _ in state.handle_upload([make_upload_file("invoice.pdf", pdf_bytes)]):
         pass
     await drain_active_job(state)
@@ -116,7 +116,7 @@ async def test_upload_with_parse_error_marks_row_error_and_blocks_save(
     monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
 
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
     async for _ in state.handle_upload([make_upload_file("bad.pdf", b"%PDF-1.4 bad")]):
         pass
     await drain_active_job(state)
@@ -140,7 +140,7 @@ async def test_full_subprocess_e2e_uploads_parses_saves_and_downloads(
     pdf_bytes = b"%PDF-1.4 real subprocess flow test " + os.urandom(32)
 
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
     async for _ in state.handle_upload([make_upload_file("invoice.pdf", pdf_bytes)]):
         pass
     await drain_active_job(state)
@@ -187,7 +187,7 @@ async def test_payments_csv_matches_wise_bulk_upload_schema(
 ):
     """payments.csv columns + static fields match Wise's bulk-payment format."""
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
     async for _ in state.handle_upload(
         [make_upload_file("wise.pdf", b"%PDF-1.4 wise csv schema test")],
     ):
@@ -218,7 +218,7 @@ async def test_payments_csv_increments_reference_across_saves(
 ):
     """Two saves → referenceNumber 1, 2."""
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
     for name in ("first.pdf", "second.pdf"):
         async for _ in state.handle_upload(
             [make_upload_file(name, b"%PDF-1.4 " + name.encode())],
@@ -263,7 +263,7 @@ async def test_multi_doc_type_e2e_through_subprocess(
     monkeypatch.setenv("FAKE_DOC_TYPE", doc_type)
 
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
     name = f"{doc_type}.pdf"
     async for _ in state.handle_upload([make_upload_file(name, b"%PDF-1.4 " + name.encode())]):
         pass
@@ -301,7 +301,7 @@ async def test_concurrent_uploads_all_parse_successfully(
 ):
     """Three PDFs uploaded together all reach 'done' via the parallel ThreadPool."""
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
 
     files = [
         make_upload_file(f"f{i}.pdf", f"%PDF-1.4 file {i}".encode())
@@ -340,7 +340,7 @@ async def test_retry_after_subprocess_failure_eventually_succeeds(
     monkeypatch.setenv("FAKE_FAIL_UNTIL", "1")  # one extract attempt fails, then succeed
 
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
     async for _ in state.handle_upload([make_upload_file("retry.pdf", b"%PDF-1.4 retry")]):
         pass
     await drain_active_job(state)

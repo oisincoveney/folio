@@ -76,7 +76,7 @@ async def test_retry_failed_row_re_runs_through_parse_pipeline(monkeypatch):
     monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
 
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
 
     # 1. Upload → first parse errors out.
     async for _ in state.handle_upload([make_upload_file("retry.pdf", b"%PDF-1.4 r")]):
@@ -130,7 +130,7 @@ async def test_retry_failed_picks_up_all_error_rows(monkeypatch):
     monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
 
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
     async for _ in state.handle_upload([
         make_upload_file("a.pdf", b"a"),
         make_upload_file("b.pdf", b"b"),
@@ -170,7 +170,7 @@ async def test_user_edits_then_save_persists_edited_values(
 ):
     """User edits fields after parsing → save uses the edited values."""
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
     async for _ in state.handle_upload([make_upload_file("edit.pdf", b"%PDF-1.4 e")]):
         pass
     await drain_active_job(state)
@@ -230,7 +230,7 @@ async def test_file_browser_lists_saved_documents_by_month(
 ):
     """After saves, load_file_browser groups objects by their YYYY-MM prefix."""
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
 
     # Upload + save two invoices with distinct identifiers so filenames differ.
     for inv_id, content in [("FB-1", b"%PDF-1.4 fb1"), ("FB-2", b"%PDF-1.4 fb2")]:
@@ -282,7 +282,7 @@ async def test_download_file_generates_presigned_url_that_fetches_bytes(
     import urllib.request  # noqa: PLC0415
 
     state = BatchState()
-    state.model = "test-model"
+    state.update_model("test-model")
     pdf_bytes = b"%PDF-1.4 downloadable" + os.urandom(16)
     async for _ in state.handle_upload([make_upload_file("dl.pdf", pdf_bytes)]):
         pass

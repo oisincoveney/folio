@@ -1,51 +1,17 @@
-"""Right panel: dark log stream + field editor for the selected file."""
+"""Right panel: dark log stream + field editor for the selected file.
+
+Log filtering (``visible_logs`` / ``hidden_technical_count`` /
+``toggle_technical``) lives on ``BatchState``. Reflex's substate hierarchy
+makes cross-state ``@rx.var`` iteration unworkable, and the filter is just a
+presentational view over the same row logs ``BatchState`` already owns — so
+it belongs on the same state slot, not a sibling state.
+"""
 
 import reflex as rx
 
 from folio import styles
 from folio.models import LogEntry
 from folio.states.batch import BatchState
-
-
-class LogPanelState(rx.State):
-    """UI state for the right-column log panel."""
-
-    show_technical: bool = False
-
-    def toggle_technical(self) -> None:
-        """Toggle visibility of technical log entries."""
-        self.show_technical = not self.show_technical
-
-    @rx.var
-    def visible_logs(self) -> list[LogEntry]:
-        """Return log entries for the selected row, filtered by show_technical."""
-        rows = BatchState.rows
-        selected = BatchState.selected_file_key
-        row_logs: list[LogEntry] = []
-        for row in rows:
-            if row.file_key == selected:
-                row_logs = row.logs
-                break
-        if not row_logs and rows:
-            row_logs = rows[0].logs
-        if self.show_technical:
-            return row_logs
-        return [e for e in row_logs if not e.technical]
-
-    @rx.var
-    def hidden_technical_count(self) -> int:
-        """Count of technical entries currently hidden."""
-        rows = BatchState.rows
-        selected = BatchState.selected_file_key
-        row_logs: list[LogEntry] = []
-        for row in rows:
-            if row.file_key == selected:
-                row_logs = row.logs
-                break
-        if not row_logs and rows:
-            row_logs = rows[0].logs
-        return sum(1 for e in row_logs if e.technical)
-
 
 # ---------------------------------------------------------------------------
 # Log entry rendering
@@ -102,17 +68,17 @@ def _panel_header() -> rx.Component:
                 white_space="nowrap",
             ),
             rx.text(
-                LogPanelState.visible_logs.length(),
+                BatchState.visible_logs.length(),
                 " events",
                 size="1",
                 color="var(--gray-7)",
             ),
             rx.cond(
-                (LogPanelState.hidden_technical_count > 0)
-                & ~LogPanelState.show_technical,
+                (BatchState.hidden_technical_count > 0)
+                & ~BatchState.show_technical,
                 rx.text(
                     " · ",
-                    LogPanelState.hidden_technical_count,
+                    BatchState.hidden_technical_count,
                     " hidden",
                     size="1",
                     color="var(--gray-8)",
@@ -150,7 +116,7 @@ def _panel_header() -> rx.Component:
                 variant="ghost",
                 color_scheme="gray",
                 size="1",
-                on_click=LogPanelState.toggle_technical,
+                on_click=BatchState.toggle_technical,
                 title="Toggle technical entries",
                 color="var(--gray-7)",
             ),
@@ -285,7 +251,7 @@ def log_panel() -> rx.Component:
     return rx.flex(
         _panel_header(),
         rx.box(
-            rx.foreach(LogPanelState.visible_logs, _log_item),
+            rx.foreach(BatchState.visible_logs, _log_item),
             **styles.LOG_PANEL,
         ),
         _field_editor(),

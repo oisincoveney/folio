@@ -19,6 +19,7 @@ from folio.services import ingestion as ingestion_svc
 from folio.services import parser as parse_mod
 from folio.services.ingestion import IngestionError
 from folio.services.parser import start_parse_job
+from folio.states.model_selection import ModelSelectionState
 
 UPLOAD_DIR = Path(__file__).parent.parent.parent / ".folio_uploads"
 
@@ -30,11 +31,15 @@ def _path_exists(p: str) -> bool:
     return Path(p).exists()
 
 
-class BatchState(rx.State):
-    """Parse + save state for the index page."""
+class BatchState(ModelSelectionState):
+    """Parse + save state for the index page.
 
-    model: str = ""
-    models: list[dict] = []
+    Subclasses ``ModelSelectionState`` so ``self.model`` resolves to the active
+    opencode model id at compute time (handle_upload reads it to dispatch a
+    parse job). ``model`` / ``models`` and the model-selection handlers
+    (``load_models`` / ``update_model``) live on the parent.
+    """
+
     rows: list[InvoiceRow] = []
     selected_file_key: str = ""
     parsing: bool = False
@@ -44,6 +49,10 @@ class BatchState(rx.State):
     retry_queue: list[str] = []
     retry_running: bool = False
     staged_files: dict[str, list[str]] = {}
+    # Log-panel filter: lives here because it's a view over `rows`, and Reflex
+    # doesn't allow cross-state `@rx.var` iteration of `self.rows` from a
+    # sibling state.
+    show_technical: bool = False
 
     # --- computed vars ---
 
@@ -89,6 +98,36 @@ class BatchState(rx.State):
             return 0
         return min(100, int(self.completed / self.total * 100))
 
+    @rx.var
+    def visible_logs(self) -> list[LogEntry]:
+        """Logs for the selected row, filtered by `show_technical`."""
+        row_logs: list[LogEntry] = []
+        for row in self.rows:
+            if row.file_key == self.selected_file_key:
+                row_logs = row.logs
+                break
+        if not row_logs and self.rows:
+            row_logs = self.rows[0].logs
+        if self.show_technical:
+            return row_logs
+        return [e for e in row_logs if not e.technical]
+
+    @rx.var
+    def hidden_technical_count(self) -> int:
+        """Number of technical entries currently hidden by the filter."""
+        row_logs: list[LogEntry] = []
+        for row in self.rows:
+            if row.file_key == self.selected_file_key:
+                row_logs = row.logs
+                break
+        if not row_logs and self.rows:
+            row_logs = self.rows[0].logs
+        return sum(1 for e in row_logs if e.technical)
+
+    def toggle_technical(self) -> None:
+        """Toggle visibility of technical log entries in the log panel."""
+        self.show_technical = not self.show_technical
+
     # --- helpers ---
 
     def _row_index(self, file_key: str) -> int | None:
@@ -105,20 +144,9 @@ class BatchState(rx.State):
 
     # --- simple event handlers ---
 
-    def load_models(self) -> None:
-        """Populate the model list from parse module options."""
-        options = parse_mod.get_model_options()
-        self.models = [{"id": m["id"], "pdf": bool(m["pdf"])} for m in options]
-        if not self.model:
-            self.model = parse_mod.get_default_model()
-
     def select_row(self, file_key: str) -> None:
         """Set the active row by file key."""
         self.selected_file_key = file_key
-
-    def update_model(self, model: str) -> None:
-        """Update the active model selection."""
-        self.model = model
 
     def set_selected_company(self, v: str) -> None:
         """Set the company field on the selected row."""

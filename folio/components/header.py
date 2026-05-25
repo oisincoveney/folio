@@ -2,11 +2,16 @@
 
 import reflex as rx
 
-from folio.states.batch import BatchState
+from folio.states.model_selection import ModelSelectionState
 
 
-class HeaderState(rx.State):
-    """UI state for the header model dropdown."""
+class HeaderState(ModelSelectionState):
+    """UI state for the header model dropdown.
+
+    Subclasses ``ModelSelectionState`` so the ``@rx.var``s below can iterate
+    ``self.models`` at compute time. (Reflex does not support iterating a
+    sibling state's symbolic ``Var`` inside ``@rx.var``.)
+    """
 
     search: str = ""
 
@@ -19,7 +24,7 @@ class HeaderState(rx.State):
         """Return PDF-capable models matching the current search."""
         s = self.search.lower()
         return [
-            m for m in BatchState.models if m["pdf"] and (not s or s in m["id"].lower())
+            m for m in self.models if m["pdf"] and (not s or s in m["id"].lower())
         ]
 
     @rx.var
@@ -27,7 +32,7 @@ class HeaderState(rx.State):
         """Return non-PDF models matching the current search."""
         s = self.search.lower()
         return [
-            m for m in BatchState.models
+            m for m in self.models
             if not m["pdf"] and (not s or s in m["id"].lower())
         ]
 
@@ -36,7 +41,7 @@ def _model_option(model: dict) -> rx.Component:
     """Render one model option in the dropdown list."""
     return rx.box(
         rx.text(model["id"], size="2"),
-        on_click=BatchState.update_model(model["id"]),
+        on_click=HeaderState.update_model(model["id"]),
         padding="var(--space-1) var(--space-3)",
         cursor="pointer",
         border_radius="var(--radius-2)",
@@ -98,7 +103,7 @@ def header() -> rx.Component:
             rx.popover.root(
                 rx.popover.trigger(
                     rx.button(
-                        BatchState.model,
+                        HeaderState.model,
                         rx.icon("chevron_down", size=13),
                         variant="soft",
                         color_scheme="gray",
@@ -139,7 +144,7 @@ def header() -> rx.Component:
                 rx.icon("refresh_cw", size=13),
                 variant="ghost",
                 color_scheme="gray",
-                on_click=BatchState.load_models,
+                on_click=HeaderState.load_models,
                 title="Refresh models",
             ),
             gap="1",
