@@ -34,7 +34,7 @@ def _log_item(entry: LogEntry) -> rx.Component:
                 rx.text(entry.meta, size="1", color="var(--gray-7)"),
             ),
             align="center",
-            gap="2",
+            spacing="2",
             **styles.LOG_ENTRY_HEADER,
         ),
         rx.cond(
@@ -84,7 +84,7 @@ def _panel_header() -> rx.Component:
                     color="var(--gray-8)",
                 ),
             ),
-            gap="2",
+            spacing="2",
             align="center",
             min_width="0",
             flex_grow="1",
@@ -127,12 +127,12 @@ def _panel_header() -> rx.Component:
                 ("error", rx.icon("triangle_alert", size=14, color="var(--amber-9)")),
                 rx.icon("circle", size=14, color="var(--gray-7)"),
             ),
-            gap="2",
+            spacing="2",
             align="center",
             flex_shrink="0",
         ),
         align="center",
-        gap="3",
+        spacing="3",
         **styles.LOG_PANEL_HEADER,
     )
 
@@ -151,7 +151,7 @@ def _field(label: str, input_component: rx.Component) -> rx.Component:
         _label(label),
         input_component,
         direction="column",
-        gap="2",
+        spacing="2",
     )
 
 
@@ -223,7 +223,7 @@ def _field_editor() -> rx.Component:
             ),
             rx.box(),
             columns="3",
-            gap="1rem",
+            spacing="4",
         ),
         _field(
             "Description",
@@ -236,7 +236,7 @@ def _field_editor() -> rx.Component:
             ),
         ),
         direction="column",
-        gap="4",
+        spacing="4",
         **styles.FIELD_EDITOR,
     )
 

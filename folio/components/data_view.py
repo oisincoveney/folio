@@ -25,7 +25,7 @@ def _tile(label: str, value: rx.Var | str) -> rx.Component:
             rx.text(label, size="1", color="var(--gray-9)"),
             rx.text(value, size="5", weight="bold"),
             direction="column",
-            gap="1",
+            spacing="1",
         ),
         flex_grow="1",
     )
@@ -41,7 +41,7 @@ def _totals_strip() -> rx.Component:
             DataViewState.outstanding_counts[DataViewState.doc_type].to_string(),
         ),
         _tile("Records shown", DataViewState.records.length().to_string()),
-        gap="3",
+        spacing="3",
         width="100%",
     )
 
@@ -94,7 +94,7 @@ def _filters() -> rx.Component:
                 ),
                 on_change=DataViewState.set_quarter,
             ),
-            gap="2",
+            spacing="2",
             align="center",
         ),
         align="center",
@@ -241,7 +241,7 @@ def data_page() -> rx.Component:
                     _records_table(),
                 ),
                 direction="column",
-                gap="3",
+                spacing="3",
                 width="100%",
                 padding="16px",
             ),
