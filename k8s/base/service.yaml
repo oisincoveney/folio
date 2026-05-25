@@ -6,10 +6,13 @@ spec:
   selector:
     app: folio
   ports:
-    - name: frontend
+    # Reflex in fullstack prod mode (and in dev when fronted by Tilt's pod-
+    # direct port-forwards) serves both the frontend static export and the
+    # backend API from a single uvicorn/granian process on port 3000. The
+    # container's EXPOSE 8000 is dev-mode only and never reached via the
+    # Service in any deployment mode we use, so this Service only exposes
+    # 3000.
+    - name: http
       port: 3000
-      targetPort: 3000
-    - name: backend
-      port: 8000
       targetPort: 3000
   type: ClusterIP

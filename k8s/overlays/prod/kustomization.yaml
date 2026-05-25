@@ -3,9 +3,6 @@
 # Layered on top of the base manifests with:
 #   - production image (ghcr.io/oisin-ee/folio) + pull secret
 #   - Traefik Ingress + cert-manager TLS at folio.momokaya.ee
-#   - service-port fix (base service routes backend port 8000 -> targetPort
-#     3000, which is wrong; in prod we route 8000 -> 8000 so the Ingress can
-#     reach the Reflex backend)
 #   - prod configmap values (bucket name, in-cluster Minio endpoint, API_URL)
 #
 # `folio-secrets` and `ghcr-pull-secret` are NOT included here — they live as
@@ -31,10 +28,6 @@ patches:
   - path: deployment-patch.yaml
     target:
       kind: Deployment
-      name: folio
-  - path: service-patch.yaml
-    target:
-      kind: Service
       name: folio
 
 # Merge prod values on top of the base configmap.
