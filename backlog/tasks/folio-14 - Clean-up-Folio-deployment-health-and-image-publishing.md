@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - Codex
 created_date: '2026-05-25 14:28'
-updated_date: '2026-05-25 14:38'
+updated_date: '2026-05-25 14:44'
 labels:
   - infra
   - deploy
@@ -42,4 +42,6 @@ Fix the remaining Folio deployment cleanup items after the production rollout: m
 
 <!-- SECTION:NOTES:BEGIN -->
 Added Folio image publishing support and switched the canonical image from the temporary private org package `ghcr.io/oisin-ee/folio` to `ghcr.io/oisincoveney/folio`, matching the actual GitHub repo owner so Actions can publish with `GITHUB_TOKEN`. Added `.github/workflows/publish-image.yml`, `.github/actionlint.yaml`, and `mise run image:publish`. Published a bootstrap amd64 runtime image with `TAG=bootstrap mise run image:publish`; both `bootstrap` and `latest` resolve to `sha256:0141313c955c522a26cda937c92afe933269e7910396f9bb82a8cc420885e6e0`. Validation so far: `mise run check` passed, `actionlint .github/workflows/publish-image.yml` passed, `docker buildx build --check --platform linux/amd64 --target runtime --build-arg REFLEX_API_URL=https://folio.momokaya.ee .` passed, `kubectl kustomize k8s/overlays/prod` renders `ghcr.io/oisincoveney/folio:latest` with `imagePullPolicy: Always`, and server dry-run apply of the Folio prod overlay passed.
+
+The first GitHub Actions publish run queued indefinitely on `[linux, k8s-runner]` because this is a public personal repo and the org ARC runner did not pick it up. Cancelled run `26405964833` and changed the workflow to `ubuntu-latest`, which is already `linux/amd64` and can publish to `ghcr.io/oisincoveney/folio` with the repo `GITHUB_TOKEN`. Re-ran `actionlint .github/workflows/publish-image.yml`; it passed.
 <!-- SECTION:NOTES:END -->
