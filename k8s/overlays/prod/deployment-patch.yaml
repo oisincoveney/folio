@@ -1,10 +1,8 @@
-# Prod overlay: switch from the locally-built `folio:latest` to the GHCR
-# image, add the ghcr-pull-secret reference. Container port is unchanged from
-# base (3000; Reflex prod serves frontend + backend from one process — see
-# the ingress.yaml comment).
-#
-# Image tag is set via the kustomization.yaml `images:` directive — do not
-# hard-code a tag here.
+# Prod overlay: attach the GHCR pull secret so the cluster can pull
+# ghcr.io/oisin-ee/folio. The image itself (both the main container and the
+# db-migrate init container) is rewritten by the `images:` directive in
+# kustomization.yaml — Kustomize matches by image name and substitutes every
+# container that uses `folio` or `folio:latest`.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,11 +12,3 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-pull-secret
-      initContainers:
-        - name: db-migrate
-          image: folio
-          imagePullPolicy: IfNotPresent
-      containers:
-        - name: folio
-          image: folio
-          imagePullPolicy: IfNotPresent
