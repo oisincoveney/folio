@@ -1,8 +1,8 @@
 """State-flow tests: retry queue, field editing, file browser.
 
-These exercise the AppState handlers users actually interact with via the UI —
+These exercise the BatchState handlers users actually interact with via the UI —
 retrying a failed row, editing a field then saving, and browsing previously
-saved documents. Tests instantiate real AppState (Reflex allows this under
+saved documents. Tests instantiate real BatchState (Reflex allows this under
 pytest) and mock at the seams that hit subprocesses or external services.
 """
 
@@ -18,7 +18,8 @@ from sqlmodel import select
 from folio.services import parser as parse_mod
 from folio.db_models import InvoiceRecord
 from folio.models import InvoiceRow
-from folio.state import AppState
+from folio.states.batch import BatchState
+from folio.states.file_browser import FileBrowserState
 
 from tests._helpers import drain_active_job, make_upload_file, month_prefix
 
@@ -72,9 +73,9 @@ async def test_retry_failed_row_re_runs_through_parse_pipeline(monkeypatch):
         q.put({"type": "done"})
         return q
 
-    monkeypatch.setattr("folio.state.start_parse_job", fake_start_parse_job)
+    monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
 
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
 
     # 1. Upload → first parse errors out.
@@ -126,9 +127,9 @@ async def test_retry_failed_picks_up_all_error_rows(monkeypatch):
         q.put({"type": "done"})
         return q
 
-    monkeypatch.setattr("folio.state.start_parse_job", fake_start_parse_job)
+    monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
 
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
     async for _ in state.handle_upload([
         make_upload_file("a.pdf", b"a"),
@@ -151,7 +152,7 @@ async def test_retry_failed_picks_up_all_error_rows(monkeypatch):
 
 def test_retry_with_no_error_rows_is_a_noop():
     """retry_rows returns None and doesn't touch state when no rows match."""
-    state = AppState()
+    state = BatchState()
     state.rows = [InvoiceRow(file_key="ok.pdf", source_id="s", status="done")]
     result = state.retry_rows(["ok.pdf"])
     assert result is None
@@ -168,7 +169,7 @@ async def test_user_edits_then_save_persists_edited_values(
     s3, clean_db, clean_bucket, fake_opencode,
 ):
     """User edits fields after parsing → save uses the edited values."""
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
     async for _ in state.handle_upload([make_upload_file("edit.pdf", b"%PDF-1.4 e")]):
         pass
@@ -211,7 +212,7 @@ async def test_user_edits_then_save_persists_edited_values(
 
 def test_set_selected_field_with_no_selection_is_a_noop():
     """Calling set_selected_X without selected_file_key set silently does nothing."""
-    state = AppState()
+    state = BatchState()
     state.rows = [InvoiceRow(file_key="a.pdf", source_id="s", company="Original")]
     # selected_file_key intentionally not set
     state.set_selected_company("Should not stick")
@@ -228,7 +229,7 @@ async def test_file_browser_lists_saved_documents_by_month(
     s3, clean_db, clean_bucket, fake_opencode,
 ):
     """After saves, load_file_browser groups objects by their YYYY-MM prefix."""
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
 
     # Upload + save two invoices with distinct identifiers so filenames differ.
@@ -244,14 +245,15 @@ async def test_file_browser_lists_saved_documents_by_month(
         assert state.rows[-1].status_ok is True, state.rows[-1].error
 
     # Drive the browser.
-    state.load_file_browser()
+    browser = FileBrowserState()
+    browser.load_file_browser()
 
     month = month_prefix()
-    assert month in state.browser_months
-    assert state.browser_month == month  # auto-selected since empty
+    assert month in browser.browser_months
+    assert browser.browser_month == month  # auto-selected since empty
 
     # Should see at minimum: the two invoices + a payments.csv.
-    files = state.browser_files[month]
+    files = browser.browser_files[month]
     keys = [f["key"] for f in files]
     invoice_files = [k for k in keys if "/invoices/" in k]
     assert len(invoice_files) == 2
@@ -265,7 +267,7 @@ async def test_file_browser_lists_saved_documents_by_month(
 
 
 def test_select_browser_month_switches_active_month():
-    state = AppState()
+    state = FileBrowserState()
     state.browser_months = ["2026-05", "2026-04", "2026-03"]
     state.browser_month = "2026-05"
     state.select_browser_month("2026-04")
@@ -279,7 +281,7 @@ async def test_download_file_generates_presigned_url_that_fetches_bytes(
     """state.download_file produces a presigned URL good for an HTTP GET."""
     import urllib.request  # noqa: PLC0415
 
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
     pdf_bytes = b"%PDF-1.4 downloadable" + os.urandom(16)
     async for _ in state.handle_upload([make_upload_file("dl.pdf", pdf_bytes)]):

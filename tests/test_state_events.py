@@ -1,19 +1,19 @@
-"""Tests for AppState's streaming-event reducer (`_apply_event`).
+"""Tests for BatchState's streaming-event reducer (`_apply_event`).
 
-Real `AppState()` instances — Reflex allows this under pytest via the
+Real `BatchState()` instances — Reflex allows this under pytest via the
 `is_testing_env()` hook in `reflex/state.py`. No duck-typing.
 """
 
 from folio.models import InvoiceRow
-from folio.state import AppState
+from folio.states.batch import BatchState
 
 
 def _row(file_key: str = "a.pdf", **overrides: object) -> InvoiceRow:
     return InvoiceRow(file_key=file_key, source_id=f"src-{file_key}", **overrides)
 
 
-def _state(rows: list[InvoiceRow] | None = None) -> AppState:
-    s = AppState()
+def _state(rows: list[InvoiceRow] | None = None) -> BatchState:
+    s = BatchState()
     s.rows = rows or []
     return s
 

@@ -29,7 +29,7 @@ async def drain_active_job(state) -> None:  # noqa: ANN001
     Substitutes for stream_parse's @rx.event(background=True) loop so tests don't
     have to spin Reflex's background-event machinery.
     """
-    from folio.state import _active_jobs  # noqa: PLC0415
+    from folio.states.batch import _active_jobs  # noqa: PLC0415
 
     job_id, q = next(iter(_active_jobs.items()))
     while True:

@@ -1,94 +1,37 @@
-"""Reflex application state for folio."""
+"""BatchState — parse / row lifecycle + side-panel editing."""
+
+from __future__ import annotations
 
 import asyncio
-import datetime
-import hashlib
-import os
 import queue
 import tempfile
 import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any
 
-import boto3
 import reflex as rx
 from botocore.exceptions import ClientError
 
-from folio.services import parser as parse_mod
-from folio import storage as storage_mod
-from folio.db_models import (
-    BankTransactionRecord,
-    InvoiceRecord,
-    PayslipRecord,
-    TaxReceiptRecord,
-)
+from folio import aws
 from folio.log_parser import parse_opencode_line, system_log
 from folio.models import InvoiceRow, LogEntry
+from folio.services import ingestion as ingestion_svc
+from folio.services import parser as parse_mod
+from folio.services.ingestion import IngestionError
 from folio.services.parser import start_parse_job
 
-_RECORD_CLS = {
-    "invoice": InvoiceRecord,
-    "bank_statement": BankTransactionRecord,
-    "tax_receipt": TaxReceiptRecord,
-    "payslip": PayslipRecord,
-}
-
-UPLOAD_DIR = Path(__file__).parent.parent / ".folio_uploads"
+UPLOAD_DIR = Path(__file__).parent.parent.parent / ".folio_uploads"
 
 # Keyed by job_id; populated before stream_parse background task reads it.
-_active_jobs = {}
-
-
-def _s3() -> Any:  # noqa: ANN401
-    return boto3.client(
-        "s3",
-        endpoint_url=os.environ.get("FOLIO_BUCKET_ENDPOINT"),
-        aws_access_key_id=os.environ.get("FOLIO_BUCKET_ACCESS_KEY"),
-        aws_secret_access_key=os.environ.get("FOLIO_BUCKET_SECRET_KEY"),
-        region_name=os.environ.get("FOLIO_BUCKET_REGION", "auto"),
-    )
+_active_jobs: dict[str, queue.Queue] = {}
 
 
 def _path_exists(p: str) -> bool:
     return Path(p).exists()
 
 
-def _row_to_record_dict(row: InvoiceRow, key: str, content_hash: str) -> dict[str, str]:
-    """Build a record dict from an InvoiceRow for DB upsert."""
-    base: dict[str, str] = {
-        "file_key": key,
-        "content_hash": content_hash,
-        "saved_at": datetime.datetime.now(tz=datetime.UTC).date().isoformat(),
-        "doc_type": row.doc_type,
-        "status": "outstanding",
-    }
-    if row.doc_type == "invoice":
-        base.update({
-            "amount": row.amount,
-            "currency": row.target_currency,
-            "company": row.company,
-            "invoice_number": row.invoice_number,
-            "invoice_date": row.invoice_date,
-            "description": row.description,
-            "account_number": row.account_number,
-            "payment_reference": row.payment_reference,
-        })
-    else:
-        raw = row.raw_data
-        for field in (
-            "transaction_date", "amount", "currency", "counterparty", "description",
-            "running_balance", "tax_type", "period", "amount_paid", "jurisdiction",
-            "gross_salary", "income_tax", "social_tax", "net_pay",
-        ):
-            val = raw.get(field)
-            if isinstance(val, str):
-                base[field] = val
-    return base
-
-
-class AppState(rx.State):
-    """Application state backing the folio UI."""
+class BatchState(rx.State):
+    """Parse + save state for the index page."""
 
     model: str = ""
     models: list[dict] = []
@@ -101,12 +44,6 @@ class AppState(rx.State):
     retry_queue: list[str] = []
     retry_running: bool = False
     staged_files: dict[str, list[str]] = {}
-
-    # --- file browser state ---
-    browser_months: list[str] = []
-    browser_files: dict[str, list[dict]] = {}
-    browser_loading: bool = False
-    browser_month: str = ""
 
     # --- computed vars ---
 
@@ -143,7 +80,7 @@ class AppState(rx.State):
     @rx.var
     def bucket_name(self) -> str:
         """Return the configured S3 bucket name."""
-        return os.environ.get("FOLIO_BUCKET_NAME", "")
+        return aws.bucket_name()
 
     @rx.var
     def progress_pct(self) -> int:
@@ -398,7 +335,7 @@ class AppState(rx.State):
         _active_jobs[job_id] = q
         self.total += len(temp_files)
         self.parsing = True
-        yield AppState.stream_parse(job_id)  # pyright: ignore[reportReturnType]
+        yield BatchState.stream_parse(job_id)  # pyright: ignore[reportReturnType]
 
     @rx.event(background=True)
     async def stream_parse(self, job_id: str) -> None:
@@ -441,37 +378,27 @@ class AppState(rx.State):
             data = Path(path).read_bytes()
             if is_temp:
                 Path(path).unlink(missing_ok=True)
-            bucket = os.environ.get("FOLIO_BUCKET_NAME", "")
-            client = _s3()
-            filename = storage_mod.build_invoice_filename(
-                {
-                    "company": row.company,
-                    "invoiceNumber": row.invoice_number,
-                    "amount": row.amount,
-                    "targetCurrency": row.target_currency,
-                    "description": row.description,
-                },
-            )
-            key = storage_mod.object_key(row.doc_type, filename)
-            client.put_object(Body=data, Bucket=bucket, Key=key)
-            self.staged_files.pop(row.source_id, None)
-            if row.doc_type == "invoice":
-                csv_key = storage_mod.payments_csv_key()
-                ref_num = storage_mod.get_next_ref_s3(client, bucket, csv_key)
-                storage_mod.append_csv_row_s3(
-                    client, bucket, csv_key,
-                    row.target_currency, row.amount, row.payment_reference, ref_num,
-                )
-            content_hash = hashlib.sha256(data).hexdigest()
-            record_cls = _RECORD_CLS.get(row.doc_type, InvoiceRecord)
-            try:
-                record_cls.upsert(_row_to_record_dict(row, key, content_hash))
-            except Exception as db_err:  # noqa: BLE001
-                self._patch_row(idx, error=f"DB write failed: {db_err}")
-                return
-            self._patch_row(idx, saved_as=key, status_ok=True)
-        except (OSError, ValueError, ClientError) as e:
+        except (OSError, ValueError) as e:
             self._patch_row(idx, error=str(e))
+            return
+        try:
+            saved = ingestion_svc.save_record(row, data)
+        except IngestionError as e:
+            if e.stage == "db":
+                # S3 succeeded → mirror original behavior of popping staged_files.
+                self.staged_files.pop(row.source_id, None)
+                self._patch_row(idx, error=f"DB write failed: {e}")
+            else:
+                self._patch_row(idx, error=str(e))
+            return
+        except ClientError as e:
+            # Defensive: ingestion already converts ClientError to
+            # IngestionError(stage="s3"); keep this catch in case future
+            # changes leak one through.
+            self._patch_row(idx, error=str(e))
+            return
+        self.staged_files.pop(row.source_id, None)
+        self._patch_row(idx, saved_as=saved.key, status_ok=True)
 
     def save_all_done(self) -> None:
         """Save every completed-but-unsaved row to S3."""
@@ -506,7 +433,7 @@ class AppState(rx.State):
                 )
         self.completed = max(0, self.completed - len(retryable))
         if not self.parsing:
-            return AppState.run_retry_queue()  # pyright: ignore[reportCallIssue]
+            return BatchState.run_retry_queue()  # pyright: ignore[reportCallIssue]
         return None
 
     def retry_row(self, file_key: str) -> rx.event.EventSpec | None:
@@ -555,48 +482,4 @@ class AppState(rx.State):
         _active_jobs[job_id] = q
         self.retry_running = True
         self.parsing = True
-        yield AppState.stream_parse(job_id)  # pyright: ignore[reportReturnType]
-
-    # --- file browser ---
-
-    def load_file_browser(self) -> None:
-        """Populate browser_months and browser_files from S3 bucket listing."""
-        bucket = os.environ.get("FOLIO_BUCKET_NAME", "")
-        if not bucket:
-            return
-        self.browser_loading = True
-        client = _s3()
-        months: dict[str, list[dict]] = {}
-        paginator = client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=bucket):
-            for obj in page.get("Contents", []):
-                key: str = obj["Key"]
-                parts = key.split("/")
-                if len(parts) < 2:  # noqa: PLR2004
-                    continue
-                month = parts[0]
-                months.setdefault(month, []).append({
-                    "key": key,
-                    "size": str(obj.get("Size", 0)),
-                    "modified": obj["LastModified"].strftime("%Y-%m-%d %H:%M"),
-                    "name": parts[-1],
-                })
-        self.browser_months = sorted(months.keys(), reverse=True)
-        self.browser_files = months
-        if self.browser_months and not self.browser_month:
-            self.browser_month = self.browser_months[0]
-        self.browser_loading = False
-
-    def select_browser_month(self, month: str) -> None:
-        """Set the active month in the file browser."""
-        self.browser_month = month
-
-    def download_file(self, key: str) -> rx.event.EventSpec:
-        """Generate a presigned URL for the given S3 key and redirect to it."""
-        bucket = os.environ.get("FOLIO_BUCKET_NAME", "")
-        url: str = _s3().generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket, "Key": key},
-            ExpiresIn=300,
-        )
-        return rx.redirect(url)  # pyright: ignore[reportReturnType]
+        yield BatchState.stream_parse(job_id)  # pyright: ignore[reportReturnType]

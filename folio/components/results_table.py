@@ -5,7 +5,7 @@ import reflex as rx
 from folio import styles
 from folio.components.log_panel import log_panel
 from folio.models import InvoiceRow
-from folio.state import AppState
+from folio.states.batch import BatchState
 
 # ---------------------------------------------------------------------------
 # Status icon
@@ -87,10 +87,10 @@ def _save_cell(row: InvoiceRow) -> rx.Component:
                 size="1",
                 color_scheme="amber",
                 variant="soft",
-                on_click=AppState.retry_row(row.file_key),
+                on_click=BatchState.retry_row(row.file_key),
             ),
             rx.cond(
-                (row.status == "pending") & AppState.parsing,
+                (row.status == "pending") & BatchState.parsing,
                 rx.badge("Queued", color_scheme="blue", size="1", variant="soft"),
                 rx.text(""),
             ),
@@ -117,10 +117,10 @@ def _table_row(row: InvoiceRow) -> rx.Component:
             padding="var(--space-2)",
         ),
         rx.table.cell(_save_cell(row), padding="var(--space-2)"),
-        on_click=AppState.select_row(row.file_key),
+        on_click=BatchState.select_row(row.file_key),
         cursor="pointer",
         background=rx.cond(
-            row.file_key == AppState.selected_file_key,
+            row.file_key == BatchState.selected_file_key,
             "var(--accent-3)",
             "transparent",
         ),
@@ -136,7 +136,7 @@ def _table_row(row: InvoiceRow) -> rx.Component:
 
 def _table_header() -> rx.Component:
     """Render the batch header with status counts and action buttons."""
-    counts = AppState.status_counts
+    counts = BatchState.status_counts
     return rx.flex(
         rx.flex(
             rx.text("Batch", size="3", weight="bold"),
@@ -159,8 +159,8 @@ def _table_header() -> rx.Component:
             rx.text(
                 rx.icon("database", size=12),
                 rx.cond(
-                    AppState.bucket_name != "",
-                    AppState.bucket_name,
+                    BatchState.bucket_name != "",
+                    BatchState.bucket_name,
                     "No bucket configured",
                 ),
                 size="1",
@@ -176,8 +176,8 @@ def _table_header() -> rx.Component:
                     size="1",
                     variant="soft",
                     color_scheme="green",
-                    on_click=AppState.save_all_done,
-                    disabled=AppState.parsing,
+                    on_click=BatchState.save_all_done,
+                    disabled=BatchState.parsing,
                 ),
             ),
             rx.cond(
@@ -187,8 +187,8 @@ def _table_header() -> rx.Component:
                     size="1",
                     variant="soft",
                     color_scheme="amber",
-                    on_click=AppState.retry_failed,
-                    disabled=AppState.parsing,
+                    on_click=BatchState.retry_failed,
+                    disabled=BatchState.parsing,
                 ),
             ),
             rx.button(
@@ -196,8 +196,8 @@ def _table_header() -> rx.Component:
                 size="1",
                 variant="soft",
                 color_scheme="gray",
-                on_click=AppState.clear_session,
-                disabled=AppState.parsing,
+                on_click=BatchState.clear_session,
+                disabled=BatchState.parsing,
             ),
             gap="2",
             align="center",
@@ -235,7 +235,7 @@ def results_table() -> rx.Component:
                             rx.table.column_header_cell(""),
                         ),
                     ),
-                    rx.table.body(rx.foreach(AppState.rows, _table_row)),
+                    rx.table.body(rx.foreach(BatchState.rows, _table_row)),
                     width="100%",
                 ),
                 overflow_y="auto",

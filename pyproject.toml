@@ -48,10 +48,13 @@ select = ["ALL"]
 # Reflex's State metaclass reads class-level annotations and mutable defaults at
 # runtime, and rx.foreach inspects callback signatures at runtime — so the usual
 # ClassVar / TYPE_CHECKING patterns don't apply to State files or components.
-"folio/state.py" = [
+"folio/states/*.py" = [
   "RUF012",  # mutable class defaults are the declarative state schema
   "TC001",   # app-internal imports used in runtime-evaluated annotations
   "TC003",   # stdlib imports used in runtime-evaluated annotations
+]
+"folio/services/ingestion.py" = [
+  "TC001",   # app-internal imports used in runtime-evaluated annotations
 ]
 "folio/components/*.py" = [
   "RUF012",  # mutable class defaults are the declarative state schema

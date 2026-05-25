@@ -6,7 +6,8 @@ from folio.components.file_browser import file_browser
 from folio.components.file_picker import file_picker
 from folio.components.header import header
 from folio.components.results_table import results_table
-from folio.state import AppState
+from folio.states.batch import BatchState
+from folio.states.file_browser import FileBrowserState
 
 
 def index() -> rx.Component:
@@ -14,7 +15,7 @@ def index() -> rx.Component:
     return rx.flex(
         header(),
         rx.box(
-            rx.cond(AppState.has_rows, results_table(), file_picker()),
+            rx.cond(BatchState.has_rows, results_table(), file_picker()),
             flex_grow="1",
             display="flex",
             flex_direction="column",
@@ -53,5 +54,5 @@ app = rx.App(
         "font_family": "'IBM Plex Sans', system-ui, sans-serif",
     },
 )
-app.add_page(index, on_load=AppState.load_models)
-app.add_page(files_page, route="/files", on_load=AppState.load_file_browser)
+app.add_page(index, on_load=BatchState.load_models)
+app.add_page(files_page, route="/files", on_load=FileBrowserState.load_file_browser)

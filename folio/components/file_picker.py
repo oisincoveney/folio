@@ -2,7 +2,7 @@
 
 import reflex as rx
 
-from folio.state import AppState
+from folio.states.batch import BatchState
 
 _PICK_ID = "folio-pdf-chooser"
 
@@ -22,7 +22,7 @@ def file_picker() -> rx.Component:
                     id=_PICK_ID,
                     accept={"application/pdf": [".pdf"]},
                     multiple=True,
-                    on_drop=AppState.handle_upload(rx.upload_files(upload_id=_PICK_ID)),
+                    on_drop=BatchState.handle_upload(rx.upload_files(upload_id=_PICK_ID)),
                     border="none",
                     padding="0",
                     width="fit-content",
@@ -33,13 +33,13 @@ def file_picker() -> rx.Component:
                 align="center",
             ),
             rx.cond(
-                AppState.parsing,
+                BatchState.parsing,
                 rx.flex(
-                    rx.progress(value=AppState.progress_pct, max=100, width="100%"),
+                    rx.progress(value=BatchState.progress_pct, max=100, width="100%"),
                     rx.text(
-                        AppState.completed,
+                        BatchState.completed,
                         " of ",
-                        AppState.total,
+                        BatchState.total,
                         " files",
                         size="1",
                         color="var(--gray-9)",

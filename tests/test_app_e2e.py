@@ -32,7 +32,7 @@ from folio.db_models import (
     PayslipRecord,
     TaxReceiptRecord,
 )
-from folio.state import AppState
+from folio.states.batch import BatchState
 
 from tests._helpers import drain_active_job, make_upload_file, month_prefix
 
@@ -72,9 +72,9 @@ async def test_upload_parse_save_end_to_end(s3, clean_db, clean_bucket, monkeypa
         q.put({"type": "done"})
         return q
 
-    monkeypatch.setattr("folio.state.start_parse_job", fake_start_parse_job)
+    monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
 
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
     async for _ in state.handle_upload([make_upload_file("invoice.pdf", pdf_bytes)]):
         pass
@@ -113,9 +113,9 @@ async def test_upload_with_parse_error_marks_row_error_and_blocks_save(
         q.put({"type": "done"})
         return q
 
-    monkeypatch.setattr("folio.state.start_parse_job", fake_start_parse_job)
+    monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
 
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
     async for _ in state.handle_upload([make_upload_file("bad.pdf", b"%PDF-1.4 bad")]):
         pass
@@ -139,7 +139,7 @@ async def test_full_subprocess_e2e_uploads_parses_saves_and_downloads(
     """Full chain through the real subprocess invocation, with download verify."""
     pdf_bytes = b"%PDF-1.4 real subprocess flow test " + os.urandom(32)
 
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
     async for _ in state.handle_upload([make_upload_file("invoice.pdf", pdf_bytes)]):
         pass
@@ -186,7 +186,7 @@ async def test_payments_csv_matches_wise_bulk_upload_schema(
     s3, clean_db, clean_bucket, fake_opencode,
 ):
     """payments.csv columns + static fields match Wise's bulk-payment format."""
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
     async for _ in state.handle_upload(
         [make_upload_file("wise.pdf", b"%PDF-1.4 wise csv schema test")],
@@ -217,7 +217,7 @@ async def test_payments_csv_increments_reference_across_saves(
     s3, clean_db, clean_bucket, fake_opencode,
 ):
     """Two saves → referenceNumber 1, 2."""
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
     for name in ("first.pdf", "second.pdf"):
         async for _ in state.handle_upload(
@@ -262,7 +262,7 @@ async def test_multi_doc_type_e2e_through_subprocess(
     """
     monkeypatch.setenv("FAKE_DOC_TYPE", doc_type)
 
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
     name = f"{doc_type}.pdf"
     async for _ in state.handle_upload([make_upload_file(name, b"%PDF-1.4 " + name.encode())]):
@@ -300,7 +300,7 @@ async def test_concurrent_uploads_all_parse_successfully(
     clean_db, clean_bucket, fake_opencode,
 ):
     """Three PDFs uploaded together all reach 'done' via the parallel ThreadPool."""
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
 
     files = [
@@ -339,7 +339,7 @@ async def test_retry_after_subprocess_failure_eventually_succeeds(
     monkeypatch.setenv("FAKE_FAILURE_COUNTER", str(counter))
     monkeypatch.setenv("FAKE_FAIL_UNTIL", "1")  # one extract attempt fails, then succeed
 
-    state = AppState()
+    state = BatchState()
     state.model = "test-model"
     async for _ in state.handle_upload([make_upload_file("retry.pdf", b"%PDF-1.4 retry")]):
         pass

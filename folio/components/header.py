@@ -2,10 +2,10 @@
 
 import reflex as rx
 
-from folio.state import AppState
+from folio.states.batch import BatchState
 
 
-class HeaderState(AppState):
+class HeaderState(rx.State):
     """UI state for the header model dropdown."""
 
     search: str = ""
@@ -18,14 +18,17 @@ class HeaderState(AppState):
     def filtered_pdf_models(self) -> list[dict]:
         """Return PDF-capable models matching the current search."""
         s = self.search.lower()
-        return [m for m in self.models if m["pdf"] and (not s or s in m["id"].lower())]
+        return [
+            m for m in BatchState.models if m["pdf"] and (not s or s in m["id"].lower())
+        ]
 
     @rx.var
     def filtered_non_pdf_models(self) -> list[dict]:
         """Return non-PDF models matching the current search."""
         s = self.search.lower()
         return [
-            m for m in self.models if not m["pdf"] and (not s or s in m["id"].lower())
+            m for m in BatchState.models
+            if not m["pdf"] and (not s or s in m["id"].lower())
         ]
 
 
@@ -33,7 +36,7 @@ def _model_option(model: dict) -> rx.Component:
     """Render one model option in the dropdown list."""
     return rx.box(
         rx.text(model["id"], size="2"),
-        on_click=HeaderState.update_model(model["id"]),
+        on_click=BatchState.update_model(model["id"]),
         padding="var(--space-1) var(--space-3)",
         cursor="pointer",
         border_radius="var(--radius-2)",
@@ -73,7 +76,7 @@ def header() -> rx.Component:
             rx.popover.root(
                 rx.popover.trigger(
                     rx.button(
-                        HeaderState.model,
+                        BatchState.model,
                         rx.icon("chevron_down", size=13),
                         variant="soft",
                         color_scheme="gray",
@@ -114,7 +117,7 @@ def header() -> rx.Component:
                 rx.icon("refresh_cw", size=13),
                 variant="ghost",
                 color_scheme="gray",
-                on_click=AppState.load_models,
+                on_click=BatchState.load_models,
                 title="Refresh models",
             ),
             gap="1",

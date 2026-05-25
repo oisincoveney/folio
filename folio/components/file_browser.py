@@ -2,7 +2,7 @@
 
 import reflex as rx
 
-from folio.state import AppState
+from folio.states.file_browser import FileBrowserState
 
 
 def _month_item(month: str) -> rx.Component:
@@ -12,17 +12,17 @@ def _month_item(month: str) -> rx.Component:
         border_radius="var(--radius-2)",
         cursor="pointer",
         background=rx.cond(
-            AppState.browser_month == month,
+            FileBrowserState.browser_month == month,
             "var(--accent-3)",
             "transparent",
         ),
         color=rx.cond(
-            AppState.browser_month == month,
+            FileBrowserState.browser_month == month,
             "var(--accent-11)",
             "var(--gray-12)",
         ),
         _hover={"background": "var(--gray-3)"},
-        on_click=AppState.select_browser_month(month),
+        on_click=FileBrowserState.select_browser_month(month),
         width="100%",
     )
 
@@ -43,7 +43,7 @@ def _file_row(file: dict) -> rx.Component:
                 rx.icon("download", size=13),
                 size="1",
                 variant="ghost",
-                on_click=AppState.download_file(file["key"]),
+                on_click=FileBrowserState.download_file(file["key"]),
             ),
             align="right",
         ),
@@ -52,17 +52,17 @@ def _file_row(file: dict) -> rx.Component:
 
 def file_browser() -> rx.Component:
     """Render the /files page with a month sidebar and file table."""
-    current_files = AppState.browser_files[AppState.browser_month]
+    current_files = FileBrowserState.browser_files[FileBrowserState.browser_month]
 
     return rx.flex(
         rx.box(
             rx.vstack(
                 rx.text("Months", size="1", color="var(--gray-9)", weight="medium"),
                 rx.cond(
-                    AppState.browser_loading,
+                    FileBrowserState.browser_loading,
                     rx.spinner(size="2"),
                     rx.vstack(
-                        rx.foreach(AppState.browser_months, _month_item),
+                        rx.foreach(FileBrowserState.browser_months, _month_item),
                         gap="1",
                         width="100%",
                     ),
@@ -80,13 +80,13 @@ def file_browser() -> rx.Component:
         ),
         rx.box(
             rx.cond(
-                AppState.browser_loading,
+                FileBrowserState.browser_loading,
                 rx.flex(
                     rx.spinner(size="3"),
                     align="center", justify="center", height="100%",
                 ),
                 rx.cond(
-                    AppState.browser_month == "",
+                    FileBrowserState.browser_month == "",
                     rx.flex(
                         rx.text(
                             "Select a month to browse files.",

@@ -1,4 +1,4 @@
-"""Integration tests for AppState.save_row.
+"""Integration tests for BatchState.save_row.
 
 Drives the real save pipeline: claim a staged PDF from `parse._pending`, upload
 to S3 (real boto3 → minio testcontainer), append payments.csv (invoice only),
@@ -24,14 +24,14 @@ from sqlmodel import select
 
 from folio.services import parser as parse_mod
 from folio.models import InvoiceRow
-from folio.state import AppState
+from folio.states.batch import BatchState
 
 
 def _month_prefix() -> str:
     return datetime.datetime.now(tz=datetime.UTC).date().strftime("%Y-%m")
 
 
-def _state_with_done_invoice(file_id: str, **row_overrides: object) -> AppState:
+def _state_with_done_invoice(file_id: str, **row_overrides: object) -> BatchState:
     fields: dict[str, object] = {
         "filename_original": "acme.pdf",
         "file_key": "acme.pdf",
@@ -48,7 +48,7 @@ def _state_with_done_invoice(file_id: str, **row_overrides: object) -> AppState:
         "doc_type": "invoice",
     }
     fields.update(row_overrides)
-    state = AppState()
+    state = BatchState()
     state.rows = [InvoiceRow(**fields)]  # type: ignore[arg-type]
     return state
 
@@ -159,7 +159,7 @@ def test_save_row_increments_payments_csv_reference_number(s3, clean_db, clean_b
     fid1, _ = _stage_pdf(b"%PDF-1.4 invoice 1")
     fid2, _ = _stage_pdf(b"%PDF-1.4 invoice 2")
 
-    state = AppState()
+    state = BatchState()
     state.rows = [
         InvoiceRow(file_key="a.pdf", source_id="src-a", status="done", file_id=fid1,
                    amount="1.00", target_currency="EUR", company="A",
@@ -246,7 +246,7 @@ def test_save_all_done_only_saves_done_rows(s3, clean_db, clean_bucket):
     fid2, _ = _stage_pdf()
     fid3, _ = _stage_pdf()
 
-    state = AppState()
+    state = BatchState()
     state.rows = [
         InvoiceRow(file_key="ok.pdf", source_id="s1", status="done", file_id=fid1,
                    amount="1.00", target_currency="EUR", company="A",
