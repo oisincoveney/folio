@@ -241,6 +241,37 @@ def test_save_row_bank_statement_skips_payments_csv_and_uses_correct_prefix(
     assert records[0].running_balance == "500.00"
 
 
+def test_save_row_sets_db_persisted_true_on_success(s3, clean_db, clean_bucket):
+    file_id, _ = _stage_pdf()
+    state = _state_with_done_invoice(file_id)
+
+    state.save_row("acme.pdf")
+
+    assert state.rows[0].status_ok is True
+    assert state.rows[0].db_persisted is True
+    assert state.rows[0].error == ""
+
+
+def test_save_row_db_failure_leaves_status_ok_false(
+    s3, clean_db, clean_bucket, monkeypatch,
+):
+    from folio.services import ingestion as ingestion_mod  # noqa: PLC0415
+
+    def boom(_record: dict) -> None:
+        raise RuntimeError("simulated db failure")
+
+    monkeypatch.setattr(ingestion_mod.InvoiceRecord, "upsert", staticmethod(boom))
+
+    file_id, _ = _stage_pdf()
+    state = _state_with_done_invoice(file_id)
+
+    state.save_row("acme.pdf")
+
+    assert state.rows[0].status_ok is False
+    assert state.rows[0].db_persisted is False
+    assert state.rows[0].error.startswith("DB write failed:")
+
+
 def test_save_all_done_only_saves_done_rows(s3, clean_db, clean_bucket):
     fid1, _ = _stage_pdf()
     fid2, _ = _stage_pdf()

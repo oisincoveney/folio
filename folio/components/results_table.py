@@ -6,6 +6,7 @@ from folio import styles
 from folio.components.log_panel import log_panel
 from folio.models import InvoiceRow
 from folio.states.batch import BatchState
+from folio.states.file_browser import FileBrowserState
 
 # ---------------------------------------------------------------------------
 # Status icon
@@ -79,7 +80,22 @@ def _save_cell(row: InvoiceRow) -> rx.Component:
     """Render saved indicator, Retry button, or Queued badge per row status."""
     return rx.cond(
         row.status_ok,
-        rx.icon("check", size=14, color="var(--green-9)"),
+        rx.flex(
+            rx.icon("check", size=14, color="var(--green-9)"),
+            rx.cond(
+                row.db_persisted,
+                rx.badge("DB", size="1", color_scheme="green", variant="soft"),
+            ),
+            rx.icon_button(
+                rx.icon("download", size=12),
+                size="1",
+                variant="ghost",
+                on_click=FileBrowserState.download_file(row.saved_as),
+                title=row.saved_as,
+            ),
+            gap="1",
+            align="center",
+        ),
         rx.cond(
             row.status == "error",
             rx.button(

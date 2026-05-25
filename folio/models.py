@@ -28,6 +28,7 @@ class InvoiceRow(BaseModel):
     file_id: str = ""
     saved_as: str = ""
     status_ok: bool = False
+    db_persisted: bool = False
     logs: list[LogEntry] = []
     amount: str = ""
     target_currency: str = "EUR"

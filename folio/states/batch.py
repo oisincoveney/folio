@@ -386,19 +386,31 @@ class BatchState(rx.State):
         except IngestionError as e:
             if e.stage == "db":
                 # S3 succeeded → mirror original behavior of popping staged_files.
+                # Force status_ok=False so a future caller cannot get a green
+                # check after a failed DB upsert.
                 self.staged_files.pop(row.source_id, None)
-                self._patch_row(idx, error=f"DB write failed: {e}")
+                self._patch_row(
+                    idx,
+                    error=f"DB write failed: {e}",
+                    status_ok=False,
+                    db_persisted=False,
+                )
             else:
-                self._patch_row(idx, error=str(e))
+                self._patch_row(idx, error=str(e), status_ok=False, db_persisted=False)
             return
         except ClientError as e:
             # Defensive: ingestion already converts ClientError to
             # IngestionError(stage="s3"); keep this catch in case future
             # changes leak one through.
-            self._patch_row(idx, error=str(e))
+            self._patch_row(idx, error=str(e), status_ok=False, db_persisted=False)
             return
         self.staged_files.pop(row.source_id, None)
-        self._patch_row(idx, saved_as=saved.key, status_ok=True)
+        self._patch_row(
+            idx,
+            saved_as=saved.key,
+            status_ok=True,
+            db_persisted=saved.db_persisted,
+        )
 
     def save_all_done(self) -> None:
         """Save every completed-but-unsaved row to S3."""
