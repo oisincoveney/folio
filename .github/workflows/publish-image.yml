@@ -1,0 +1,67 @@
+name: Publish Folio image
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/publish-image.yml"
+      - "Dockerfile"
+      - "docker-entrypoint.sh"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "alembic/**"
+      - "folio/**"
+      - "rxconfig.py"
+  workflow_dispatch:
+
+concurrency:
+  group: publish-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/oisincoveney/folio
+  REFLEX_API_URL: https://folio.momokaya.ee
+
+jobs:
+  build-and-push:
+    name: Build and push production image
+    runs-on: [linux, k8s-runner]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME || github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            REFLEX_API_URL=${{ env.REFLEX_API_URL }}
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max

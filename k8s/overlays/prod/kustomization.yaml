@@ -1,7 +1,7 @@
 # Production overlay for the momokaya cluster.
 #
 # Layered on top of the base manifests with:
-#   - production image (ghcr.io/oisin-ee/folio) + pull secret
+#   - production image (ghcr.io/oisincoveney/folio) + pull secret
 #   - Traefik Ingress + cert-manager TLS at folio.momokaya.ee
 #   - prod configmap values (bucket name and in-cluster Minio endpoint)
 #
@@ -21,7 +21,7 @@ resources:
 
 images:
   - name: folio
-    newName: ghcr.io/oisin-ee/folio
+    newName: ghcr.io/oisincoveney/folio
     newTag: latest
 
 patches:

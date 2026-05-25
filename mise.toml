@@ -52,3 +52,27 @@ run = "uv run pytest"
 [tasks.check]
 description = "Run lint and typecheck together"
 depends = ["lint", "typecheck"]
+
+[tasks."image:publish"]
+description = "Build and push the production image for the cluster"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+image="${IMAGE:-ghcr.io/oisincoveney/folio}"
+tag="${TAG:-$(git rev-parse --short HEAD)}"
+platform="${PLATFORM:-linux/amd64}"
+reflex_api_url="${REFLEX_API_URL:-https://folio.momokaya.ee}"
+
+docker buildx build \
+  --platform "${platform}" \
+  --target runtime \
+  --build-arg "REFLEX_API_URL=${reflex_api_url}" \
+  --tag "${image}:${tag}" \
+  --tag "${image}:latest" \
+  --push \
+  .
+
+docker buildx imagetools inspect "${image}:${tag}"
+docker buildx imagetools inspect "${image}:latest"
+'''
