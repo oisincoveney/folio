@@ -21,6 +21,8 @@ spec:
           env:
             - name: POSTGRES_DB
               value: folio
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
             - name: POSTGRES_USER
               valueFrom:
                 configMapKeyRef:
