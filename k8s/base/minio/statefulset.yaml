@@ -51,7 +51,6 @@ kind: Job
 metadata:
   name: minio-create-bucket
 spec:
-  ttlSecondsAfterFinished: 60
   template:
     spec:
       restartPolicy: OnFailure
