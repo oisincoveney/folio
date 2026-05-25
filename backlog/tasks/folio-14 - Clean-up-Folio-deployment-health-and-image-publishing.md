@@ -1,11 +1,11 @@
 ---
 id: FOLIO-14
 title: Clean up Folio deployment health and image publishing
-status: In Progress
+status: Done
 assignee:
   - Codex
 created_date: '2026-05-25 14:28'
-updated_date: '2026-05-25 14:50'
+updated_date: '2026-05-25 14:59'
 labels:
   - infra
   - deploy
@@ -23,9 +23,9 @@ Fix the remaining Folio deployment cleanup items after the production rollout: m
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Argo health no longer leaves Folio Progressing solely because Traefik Ingress status has no load balancer address while TLS and backend are healthy.
-- [ ] #2 Folio has a committed repeatable image publish workflow/task that builds linux/amd64 runtime images with REFLEX_API_URL=https://folio.momokaya.ee and pushes to GHCR.
-- [ ] #3 Validation records live Argo/application state, HTTPS reachability, and image build/render checks.
+- [x] #1 Argo health no longer leaves Folio Progressing solely because Traefik Ingress status has no load balancer address while TLS and backend are healthy.
+- [x] #2 Folio has a committed repeatable image publish workflow/task that builds linux/amd64 runtime images with REFLEX_API_URL=https://folio.momokaya.ee and pushes to GHCR.
+- [x] #3 Validation records live Argo/application state, HTTPS reachability, and image build/render checks.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -50,4 +50,14 @@ Validated the publishing follow-up locally: actionlint passed for publish-image.
 Added OCI source metadata to the runtime image so GHCR links the container package to oisincoveney/folio; a local publish of tag 'linked' confirmed the personal package is now repository-linked and no longer needs a separate GHCR_TOKEN for normal workflow writes.
 
 Adjusted the publish workflow to commit the built commit SHA into k8s/overlays/prod/kustomization.yaml after pushing the image. This avoids relying on a mutable 'latest' tag for Argo rollouts while still publishing latest for manual/operator convenience.
+
+Final validation: GitHub Actions run 26406464980 succeeded after adding repo secrets GHCR_USERNAME and GHCR_TOKEN. The workflow pushed ghcr.io/oisincoveney/folio:267a26eb35f0ce03a98b90356b55c7fe8d70b076 and latest to digest sha256:7d788501c7fb8e5deef37cb8102594d21dbb89bf648b8aa7b40b94b6575822d7, then committed bot deploy revision 917449be95a246ebae9c5e8886d1aa0aed38dbf1 to pin prod to that immutable image tag.
+
+Live validation after Argo refresh: app-of-apps, argocd-config, folio, and folio-secrets are all Synced/Healthy. The folio Deployment has replicas=1 updated=1 ready=1 available=1, and the running pod folio-745bbf55d9-vfwdg uses image ghcr.io/oisincoveney/folio:267a26eb35f0ce03a98b90356b55c7fe8d70b076 with imageID ghcr.io/oisincoveney/folio@sha256:7d788501c7fb8e5deef37cb8102594d21dbb89bf648b8aa7b40b94b6575822d7, ready=true, restarts=0. curl -k -I https://folio.momokaya.ee/ returns HTTP/2 200.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Cleaned up Folio deployment health and image publishing. Infra now manages the Argo Traefik Ingress health customization, Folio publishes linux/amd64 runtime images through GitHub Actions and a matching mise task, and production is pinned to a workflow-built immutable image tag. Added GHCR_USERNAME and GHCR_TOKEN repository secrets so the workflow can push to the existing personal GHCR package. Verified Argo Synced/Healthy, the pod running the pinned digest with zero restarts, and HTTPS returning 200.
+<!-- SECTION:FINAL_SUMMARY:END -->
