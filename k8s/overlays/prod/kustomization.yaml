@@ -3,9 +3,9 @@
 # Layered on top of the base manifests with:
 #   - production image (ghcr.io/oisin-ee/folio) + pull secret
 #   - Traefik Ingress + cert-manager TLS at folio.momokaya.ee
-#   - prod configmap values (bucket name, in-cluster Minio endpoint, API_URL)
+#   - prod configmap values (bucket name and in-cluster Minio endpoint)
 #
-# `folio-secrets` and `ghcr-pull-secret` are NOT included here — they live as
+# `folio-secrets` and `ghcr-pull-secret` are NOT included here; they live as
 # SealedSecret manifests in oisin-ee/infra under
 # k8s/manifests/folio/sealed-secrets/ and are synced into the folio namespace
 # by a separate ArgoCD Application with sync-wave "-10".
@@ -22,8 +22,7 @@ resources:
 images:
   - name: folio
     newName: ghcr.io/oisin-ee/folio
-    # Bump per release; match the tag pushed by the release CI.
-    newTag: TAG_PLACEHOLDER
+    newTag: latest
 
 patches:
   - path: deployment-patch.yaml
@@ -40,10 +39,3 @@ configMapGenerator:
       - FOLIO_BUCKET_NAME=folio-prod
       - FOLIO_BUCKET_ENDPOINT=http://minio.folio.svc.cluster.local:9000
       - FOLIO_BUCKET_REGION=us-east-1
-      # Reflex reads `api_url` from `REFLEX_API_URL` (the `REFLEX_` prefix is
-      # hardcoded in reflex_base/config.py:_prefixes). At container start,
-      # `reflex run --env prod` writes this into web/env.json via
-      # `set_env_json()` and then `next build` bundles it into the static
-      # frontend. If this is missing or wrong, the frontend tries to open its
-      # websocket to localhost:8000 and the app fails to load in the browser.
-      - REFLEX_API_URL=https://folio.momokaya.ee

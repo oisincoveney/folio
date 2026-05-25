@@ -1,0 +1,48 @@
+# Build-context excludes. Without this every COPY pulls .venv/, .web/,
+# .folio_uploads/, .git/, and the pytest/ruff/python caches; build context
+# bloats and the host .venv risks overwriting the container's.
+
+# Python build / runtime artefacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local venv built on the host (architecture- and OS-specific)
+.venv/
+
+# Reflex build output (regenerated inside the container)
+.web/
+
+# Uploaded PDFs / Reflex disk state (huge, runtime-only)
+.folio_uploads/
+.states/
+
+# VCS + workspace
+.git/
+.github/
+
+# Editor / tooling
+.claude/
+.vscode/
+.idea/
+*.swp
+
+# Local k8s + docs (not needed in the image)
+k8s/
+backlog/
+docs/
+README.md
+HANDOFF.md
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+docker-compose.yml
+Tiltfile
+mise.toml
+.python-version
+
+# Test fixtures
+tests/

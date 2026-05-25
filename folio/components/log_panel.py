@@ -102,7 +102,7 @@ def _panel_header() -> rx.Component:
                 ),
             ),
             rx.icon_button(
-                rx.icon("wand_2", size=13),
+                rx.icon("wand_sparkles", size=13),
                 variant="ghost",
                 color_scheme="gray",
                 size="1",

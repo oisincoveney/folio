@@ -1,8 +1,7 @@
 # Prod overlay: attach the GHCR pull secret so the cluster can pull
-# ghcr.io/oisin-ee/folio. The image itself (both the main container and the
-# db-migrate init container) is rewritten by the `images:` directive in
-# kustomization.yaml — Kustomize matches by image name and substitutes every
-# container that uses `folio` or `folio:latest`.
+# ghcr.io/oisin-ee/folio, and always pull the mutable production tag.
+# The image itself (both the main container and the db-migrate init container)
+# is rewritten by the `images:` directive in kustomization.yaml.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -10,5 +9,11 @@ metadata:
 spec:
   template:
     spec:
+      initContainers:
+        - name: db-migrate
+          imagePullPolicy: Always
+      containers:
+        - name: folio
+          imagePullPolicy: Always
       imagePullSecrets:
         - name: ghcr-pull-secret

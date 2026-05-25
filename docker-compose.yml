@@ -1,6 +1,9 @@
 services:
   folio:
-    build: .
+    build:
+      context: .
+      args:
+        REFLEX_API_URL: http://localhost:3000
     ports:
       - "3000:3000"
       - "8000:8000"
