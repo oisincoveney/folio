@@ -4,12 +4,14 @@ title: Design Estonian work order template and data model
 status: To Do
 assignee: []
 created_date: '2026-05-20 22:41'
+updated_date: '2026-05-22 22:02'
 labels:
   - template
   - data-model
 dependencies: []
 parent_task_id: FOLIO-1
-ordinal: 1000
+priority: high
+ordinal: 1100
 ---
 
 ## Description
@@ -27,3 +29,9 @@ Design a template (visual layout + data schema) that will be used as the source 
 - [ ] #3 Template handles at least multi-line work descriptions and multiple line items
 - [ ] #4 Template is localised for Estonian context (EUR currency, 20% VAT, Estonian/English bilingual optional)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Grooming note: Next actionable implementation task. This should define the schema and template that FOLIO-1.2, FOLIO-1.3, and client lookup integration build on.
+<!-- SECTION:NOTES:END -->

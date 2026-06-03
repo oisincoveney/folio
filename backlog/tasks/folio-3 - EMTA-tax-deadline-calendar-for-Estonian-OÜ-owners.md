@@ -4,6 +4,7 @@ title: EMTA tax deadline calendar for Estonian OÜ owners
 status: To Do
 assignee: []
 created_date: '2026-05-20 22:43'
+updated_date: '2026-05-22 22:02'
 labels:
   - feature
   - estonia
@@ -12,7 +13,7 @@ dependencies: []
 references:
   - 'https://www.emta.ee'
 priority: medium
-ordinal: 5000
+ordinal: 3000
 ---
 
 ## Description
@@ -38,3 +39,9 @@ The calendar should show what's due, when, and a brief note on what action is ne
 - [ ] #5 Deadlines within 7 days are visually highlighted as urgent
 - [ ] #6 User can configure whether they are VAT registered (to show/hide KMD deadlines)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Grooming note: Standalone Estonian tax-calendar slice. It should be completed before the combined US + Estonia calendar in FOLIO-5.
+<!-- SECTION:NOTES:END -->

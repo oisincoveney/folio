@@ -6,15 +6,17 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-05-20 22:43'
+updated_date: '2026-05-22 22:02'
 labels:
   - feature
   - estonia
   - api-integration
-dependencies: []
+dependencies:
+  - FOLIO-1.1
 references:
   - 'https://ariregister.rik.ee'
 priority: medium
-ordinal: 4000
+ordinal: 2000
 ---
 
 ## Description
@@ -34,3 +36,9 @@ This eliminates manual lookups on ariregister.rik.ee and reduces data entry erro
 - [ ] #5 Shows a clear error if the registry is unreachable rather than silently failing
 - [ ] #6 Looked-up client data can be saved to a local address book to avoid repeat API calls
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Grooming note: This can follow the work-order data model so looked-up companies map cleanly into buyer/client fields and the local address book shape.
+<!-- SECTION:NOTES:END -->

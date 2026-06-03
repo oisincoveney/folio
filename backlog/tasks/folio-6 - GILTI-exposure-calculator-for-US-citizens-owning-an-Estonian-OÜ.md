@@ -4,6 +4,7 @@ title: GILTI exposure calculator for US citizens owning an Estonian OÜ
 status: To Do
 assignee: []
 created_date: '2026-05-20 22:47'
+updated_date: '2026-05-22 22:02'
 labels:
   - feature
   - us-tax
@@ -16,7 +17,7 @@ references:
   - >-
     https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title26-section951A
 priority: medium
-ordinal: 8000
+ordinal: 6000
 ---
 
 ## Description
@@ -45,3 +46,9 @@ No open-source Python library exists for GILTI — implement the calculation dir
 - [ ] #6 Includes a clear disclaimer that this is an estimate requiring CPA review
 - [ ] #7 Correctly references IRS Form 8992 and IRC §951A in the UI help text
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Grooming note: Build with manual inputs first; FOLIO-8.4 will later pre-fill CFC income and Estonian tax values from stored records.
+<!-- SECTION:NOTES:END -->

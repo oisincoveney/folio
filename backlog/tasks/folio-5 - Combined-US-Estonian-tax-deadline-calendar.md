@@ -4,6 +4,7 @@ title: Combined US + Estonian tax deadline calendar
 status: To Do
 assignee: []
 created_date: '2026-05-20 22:47'
+updated_date: '2026-05-22 22:02'
 labels:
   - feature
   - us-tax
@@ -18,7 +19,7 @@ references:
   - >-
     https://www.irs.gov/individuals/international-taxpayers/us-citizens-and-resident-aliens-abroad-tax-filing-dates
 priority: medium
-ordinal: 7000
+ordinal: 5000
 ---
 
 ## Description
@@ -46,3 +47,9 @@ The calendar should be exportable as an .ics file so it can be imported into any
 - [ ] #6 User can filter by country (US only, Estonia only, or both)
 - [ ] #7 Form 5471 obligation is flagged alongside the annual return deadline
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Grooming note: Keep behind FOLIO-3 so the Estonian deadline model can be reused instead of duplicated.
+<!-- SECTION:NOTES:END -->

@@ -6,6 +6,7 @@ docker_build(
     "folio",
     ".",
     dockerfile="Dockerfile",
+    target="base",
     live_update=[
         fall_back_on("Dockerfile"),
         fall_back_on("pyproject.toml"),

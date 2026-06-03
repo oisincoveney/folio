@@ -4,17 +4,17 @@ title: Auto-populate calculator inputs from the financial store
 status: To Do
 assignee: []
 created_date: '2026-05-20 22:51'
-updated_date: '2026-05-21 06:33'
+updated_date: '2026-05-22 22:02'
 labels:
   - integration
   - ui
 dependencies:
-  - FOLIO-8.3
   - FOLIO-4
   - FOLIO-6
   - FOLIO-7
 parent_task_id: FOLIO-8
-ordinal: 4000
+priority: medium
+ordinal: 8000
 ---
 
 ## Description
@@ -35,3 +35,9 @@ Each pre-filled value should show which source file it came from so the user can
 - [ ] #6 A refresh button re-aggregates from the store and updates all pre-filled values
 - [ ] #7 If a required value is not yet in the store, the field is left blank with a hint about what document type is needed
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Grooming note: Foundation storage is complete, but this remains blocked until the target calculator UIs exist. Treat it as the integration pass after FOLIO-4, FOLIO-6, and FOLIO-7.
+<!-- SECTION:NOTES:END -->

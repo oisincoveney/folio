@@ -4,13 +4,15 @@ title: AI-powered work order generation from free-form text input
 status: To Do
 assignee: []
 created_date: '2026-05-20 22:41'
+updated_date: '2026-05-22 22:02'
 labels:
   - ai
   - ui
 dependencies:
   - FOLIO-1.1
 parent_task_id: FOLIO-1
-ordinal: 2000
+priority: medium
+ordinal: 1200
 ---
 
 ## Description
@@ -29,3 +31,9 @@ The UI should be a simple text area with a "Generate" button. The output is a pr
 - [ ] #4 Handles ambiguous input gracefully — prompts user for missing required fields rather than silently omitting them
 - [ ] #5 Works for common contractor scenarios: time-based billing, fixed-price work, multi-line items
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Grooming note: Keep blocked behind FOLIO-1.1 so the AI output contract matches the finalized work-order data model.
+<!-- SECTION:NOTES:END -->

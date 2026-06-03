@@ -4,6 +4,7 @@ title: PDF export for generated work orders
 status: To Do
 assignee: []
 created_date: '2026-05-20 22:42'
+updated_date: '2026-05-22 22:02'
 labels:
   - pdf
   - export
@@ -11,7 +12,8 @@ dependencies:
   - FOLIO-1.1
   - FOLIO-1.2
 parent_task_id: FOLIO-1
-ordinal: 3000
+priority: medium
+ordinal: 1300
 ---
 
 ## Description
@@ -30,3 +32,9 @@ The PDF should look professional and be suitable for sending directly to clients
 - [ ] #4 Work order number is included and auto-incremented or user-settable
 - [ ] #5 PDF filename is meaningful, e.g. work-order-FOLIO-2024-001-ClientName.pdf
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Grooming note: Build after the editable generated work-order state exists; PDF export should render the same template/data model from FOLIO-1.1.
+<!-- SECTION:NOTES:END -->

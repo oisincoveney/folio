@@ -4,6 +4,7 @@ title: Dividend vs salary calculator for Estonian OÜ tax optimisation
 status: To Do
 assignee: []
 created_date: '2026-05-20 22:43'
+updated_date: '2026-05-22 22:02'
 labels:
   - feature
   - estonia
@@ -11,7 +12,7 @@ labels:
   - calculator
 dependencies: []
 priority: medium
-ordinal: 6000
+ordinal: 4000
 ---
 
 ## Description
@@ -32,3 +33,9 @@ This calculator lets the user enter their company's annual profit and desired ta
 - [ ] #6 Includes a brief plain-language explanation of the trade-offs shown
 - [ ] #7 Disclaimer that this is an estimate and the user should consult an accountant for official advice
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Grooming note: Build with manual inputs first; FOLIO-8.4 will later wire these inputs to the financial store.
+<!-- SECTION:NOTES:END -->

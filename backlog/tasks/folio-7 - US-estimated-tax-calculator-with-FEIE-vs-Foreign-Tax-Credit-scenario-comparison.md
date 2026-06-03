@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-05-20 22:47'
+updated_date: '2026-05-22 22:02'
 labels:
   - feature
   - us-tax
@@ -19,7 +20,7 @@ references:
   - 'https://www.irs.gov/forms-pubs/about-form-1116'
   - 'https://github.com/AutonomoDev/ai.autonomo.codes'
 priority: medium
-ordinal: 9000
+ordinal: 7000
 ---
 
 ## Description
@@ -43,3 +44,9 @@ Use `taxcalc` (PSL Tax-Calculator, https://github.com/PSLmodels/Tax-Calculator) 
 - [ ] #7 EUR income is converted to USD using annual IRS average exchange rate (user-supplied or fetched)
 - [ ] #8 Disclaimer that FEIE and FTC are mutually exclusive and the choice has multi-year implications
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Grooming note: Build with manual inputs first; FOLIO-8.4 will later pre-fill income and Estonian tax values from stored records.
+<!-- SECTION:NOTES:END -->
