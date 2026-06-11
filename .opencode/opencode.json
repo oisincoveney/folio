@@ -26,5 +26,11 @@
     "paths": [
       "../.agents/skills"
     ]
-  }
+  },
+  "plugin": [
+    "oc-codex-multi-auth",
+    "@devtheops/opencode-plugin-otel@1.1.0",
+    "@prevalentware/opencode-goal-plugin"
+  ],
+  "lsp": true
 }
