@@ -12,7 +12,7 @@ image:
   pullPolicy: Always
 
 secrets:
-  existingSecret: folio
+  existingSecret: folio-secrets
 
 # Per-run in-cluster Postgres + MinIO back the dev environment.
 postgres:

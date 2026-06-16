@@ -88,3 +88,21 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          # opencode CLI auth + its codex multi-auth plugin accounts, mounted as
+          # files where opencode reads them ($HOME=/home/folio). Mounting (vs the
+          # entrypoint writing from env) means okteto's dev container — which
+          # replaces the entrypoint — still has the auth.
+          volumeMounts:
+            - name: agent-auth
+              mountPath: /home/folio/.local/share/opencode/auth.json
+              subPath: opencode-auth.json
+              readOnly: true
+            - name: agent-auth
+              mountPath: /home/folio/.opencode/oc-codex-multi-auth-accounts.json
+              subPath: oc-codex-multi-auth-accounts.json
+              readOnly: true
+      volumes:
+        - name: agent-auth
+          secret:
+            secretName: {{ include "folio.runtimeSecretName" . }}
+            optional: {{ .Values.secrets.optional }}
