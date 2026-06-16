@@ -1,13 +1,18 @@
 # syntax=docker/dockerfile:1.7
 #
-# Four stages:
+# Stages:
 #
 #   syscommon  - Debian-slim + apt deps + uv + opencode-ai. Built once;
-#                inherited by both `base` and `runtime` so the same APT and
-#                npm installs aren't repeated.
-#   base       - adds the Python venv (uv sync --frozen) and the source.
-#                Tilt builds `--target base` and runs `reflex run --env prod`
-#                via the default CMD; live_update syncs folio/ into /app.
+#                inherited by deps (and thus base/devbase/builder/runtime) so
+#                the same APT and npm installs aren't repeated.
+#   deps       - syscommon + the Python venv with third-party deps only
+#                (uv sync --frozen --no-install-project). The slow, cacheable
+#                layer that source edits don't invalidate.
+#   devbase    - deps + .venv on PATH + dev EXPOSE. No source, no CMD. This is
+#                the image Okteto attaches to and runs `reflex run --env dev`
+#                inside; the synced host source provides the project package.
+#   base       - deps + the source + a project re-sync + the prod CMD. Tilt
+#                used to build `--target base`; runtime copies from it.
 #   builder    - extends base; prebuilds the Next.js frontend with
 #                REFLEX_API_URL baked into web/env.json. Production builds
 #                must pass --build-arg REFLEX_API_URL=https://folio.momokaya.ee.
@@ -21,9 +26,12 @@
 FROM python:3.14-slim AS syscommon
 
 # Build deps for psycopg2 + reflex's node runtime; cleaned in the same layer.
+# iproute2/lsof/procps/git support the Okteto dev loop (ss/lsof for the dev
+# server, ps for process inspection, git for in-container tooling).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl ca-certificates nodejs npm unzip \
+        iproute2 lsof procps git \
     && rm -rf /var/lib/apt/lists/*
 
 # uv binary from the official distroless image; avoids the `pip install uv`
@@ -47,15 +55,32 @@ WORKDIR /app
 
 ENTRYPOINT ["folio-entrypoint"]
 
-# --- base (Tilt target) -----------------------------------------------------
-FROM syscommon AS base
+# --- deps (cacheable dependency layer) --------------------------------------
+FROM syscommon AS deps
 
-# Install Python deps first so source changes don't invalidate this layer.
-# `--frozen` enforces the lockfile (deterministic builds); `--no-dev`
-# excludes pyright/ruff/pytest etc.
+# Install third-party Python deps first so source changes don't invalidate
+# this (slow) layer. `--frozen` enforces the lockfile (deterministic builds);
+# `--no-dev` excludes pyright/ruff/pytest etc; `--no-install-project` installs
+# only the dependencies, not the folio package itself.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
+
+# --- devbase (Okteto dev attach target) -------------------------------------
+# The image Okteto runs `reflex run --env dev` inside. No source COPY: the
+# project package arrives via the synced host source at /app. No CMD: Okteto
+# supplies the dev command. uv + the deps venv are already present from `deps`,
+# so the dev server starts against the baked Linux venv (the host's macOS
+# .venv is sync-excluded via .stignore so it never clobbers it).
+FROM deps AS devbase
+
+ENV PATH="/app/.venv/bin:${PATH}"
+
+# 3000 = Reflex frontend (dev); 8000 = Reflex backend (dev).
+EXPOSE 3000 8000
+
+# --- base (prod source layer) -----------------------------------------------
+FROM deps AS base
 
 COPY folio/ folio/
 COPY alembic/ alembic/
@@ -70,9 +95,8 @@ ENV PATH="/app/.venv/bin:${PATH}"
 
 EXPOSE 3000
 
-# Local Tilt CMD. `reflex run --env prod` runs setup_frontend_prod at
-# startup; slow on the first cold start, fine for iterative dev via
-# live_update.
+# Local CMD. `reflex run --env prod` runs setup_frontend_prod at startup; slow
+# on the first cold start, fine for iterative dev via live_update.
 CMD ["reflex", "run", "--env", "prod", "--backend-host", "0.0.0.0"]
 
 # --- builder (prebuilds frontend) -------------------------------------------

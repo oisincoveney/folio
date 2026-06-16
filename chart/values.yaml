@@ -1,0 +1,69 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/oisincoveney/folio
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+service:
+  port: 3000
+
+ingress:
+  enabled: false
+  host: ""
+  className: traefik
+
+namespace:
+  create: false
+
+momokaya:
+  envKind: ""
+  envId: ""
+  repo: folio
+  branch: ""
+  sha: ""
+  owner: ""
+  ticket: ""
+  epic: ""
+  baseDomain: ""
+  cleanupPolicy:
+    ttl: ""
+    deleteAfter: ""
+    retainOnFailure: false
+  queueName: ""
+  urls: {}
+
+# Runtime Secret (DATABASE_URL, POSTGRES_PASSWORD, FOLIO_BUCKET_ACCESS_KEY,
+# FOLIO_BUCKET_SECRET_KEY, optionally OPENCODE_AUTH_JSON). Managed outside Helm
+# (ESO/OpenBao); the chart only references it by name.
+secrets:
+  existingSecret: ""
+  optional: false
+
+# Non-sensitive config surfaced into the app ConfigMap.
+config:
+  postgresUser: folio
+  bucketName: folio
+  bucketEndpoint: http://minio:9000
+  bucketRegion: us-east-1
+
+# In-chart Postgres (gated). Translates the proven k8s/base/postgres setup.
+postgres:
+  enabled: false
+  image: postgres:17
+  database: folio
+  storage: 10Gi
+
+# In-chart MinIO + bucket-create Job (gated). Translates k8s/base/minio.
+minio:
+  enabled: false
+  image: minio/minio:latest
+  mcImage: minio/mc:latest
+  storage: 10Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi

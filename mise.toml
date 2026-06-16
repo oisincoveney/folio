@@ -1,37 +1,58 @@
 [tools]
-k3d = "5.8.3"
+helm = "3.19.4"
 kubectl = "1.33.9"
 python = "3.14.3"
-tilt = "0.37.3"
 uv = "0.11.13"
 
+# ─── Cluster-sync dev loop ───────────────────────────────────────────────
+# `mise run dev` = install the Helm dev release into an ephemeral
+# momokaya-dev-folio-$id namespace, then `okteto up folio` to attach the dev
+# container and run `reflex run --env dev`. `dev:local` stays the no-cluster
+# inner loop.
 [tasks.dev]
-description = "Run the Tilt local Kubernetes dev environment"
-run = "KUBECONFIG=k8s/local/folio-local.kubeconfig tilt up --context k3d-folio-local"
+description = "Start the cluster-sync dev loop (Helm dev release, then Okteto sync of folio)"
+depends = ["_dev:env", "_dev:folio"]
 
-[tasks."dev:ci"]
-description = "Run Tilt once and exit when local Kubernetes workloads are healthy"
-run = "KUBECONFIG=k8s/local/folio-local.kubeconfig tilt ci --context k3d-folio-local --timeout=8m --port=0"
+[tasks."_dev:env"]
+description = "Install the Helm dev release into the ephemeral momokaya-dev-folio namespace"
+run = """
+set -eu
+context=$(kubectl config current-context 2>/dev/null || true)
+if [ "$context" != "momokaya" ]; then
+  echo "Refusing to deploy: current kube context is '${context:-<none>}', expected 'momokaya'." >&2
+  echo "Use 'mise run dev:local' for the no-cluster inner loop, or switch context." >&2
+  exit 1
+fi
+id="${MOMOKAYA_ENV_ID:?MOMOKAYA_ENV_ID is required}"
+helm upgrade --install "folio-dev-$id" ./chart \
+  -n "momokaya-dev-folio-$id" \
+  --create-namespace \
+  -f chart/values.yaml \
+  -f chart/values.dev.yaml \
+  --set-string "momokaya.envId=$id" \
+  --wait
+"""
+
+[tasks."_dev:folio"]
+description = "Attach Okteto to the folio dev container"
+run = """
+set -eu
+id="${MOMOKAYA_ENV_ID:?MOMOKAYA_ENV_ID is required}"
+okteto up folio -n "momokaya-dev-folio-$id"
+"""
+
+[tasks."dev:down"]
+description = "Stop the dev loop and uninstall the ephemeral Helm release"
+run = """
+set -eu
+id="${MOMOKAYA_ENV_ID:?MOMOKAYA_ENV_ID is required}"
+okteto down folio -n "momokaya-dev-folio-$id" || true
+helm uninstall "folio-dev-$id" -n "momokaya-dev-folio-$id" || true
+"""
 
 [tasks."dev:local"]
 description = "Run Reflex directly on the host (requires DATABASE_URL + FOLIO_BUCKET_* set)"
 run = "uv run reflex run"
-
-[tasks."k8s:create"]
-description = "Create the local k3d cluster from declarative config"
-run = "k3d cluster create --config k8s/local/k3d.yaml"
-
-[tasks."k8s:kubeconfig"]
-description = "Write the project-local kubeconfig for the local k3d cluster"
-run = "k3d kubeconfig merge folio-local --output k8s/local/folio-local.kubeconfig --overwrite --kubeconfig-switch-context=false"
-
-[tasks."k8s:delete"]
-description = "Delete the local k3d cluster used by Tilt"
-run = "k3d cluster delete folio-local"
-
-[tasks."k8s:dry-run"]
-description = "Validate Kubernetes manifests against the local cluster without applying changes"
-run = "KUBECONFIG=k8s/local/folio-local.kubeconfig kubectl apply --dry-run=client -k k8s/overlays/local"
 
 [tasks.lint]
 description = "Run ruff linter"
@@ -52,27 +73,3 @@ run = "uv run pytest"
 [tasks.check]
 description = "Run lint and typecheck together"
 depends = ["lint", "typecheck"]
-
-[tasks."image:publish"]
-description = "Build and push the production image for the cluster"
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-
-image="${IMAGE:-ghcr.io/oisincoveney/folio}"
-tag="${TAG:-$(git rev-parse --short HEAD)}"
-platform="${PLATFORM:-linux/amd64}"
-reflex_api_url="${REFLEX_API_URL:-https://folio.momokaya.ee}"
-
-docker buildx build \
-  --platform "${platform}" \
-  --target runtime \
-  --build-arg "REFLEX_API_URL=${reflex_api_url}" \
-  --tag "${image}:${tag}" \
-  --tag "${image}:latest" \
-  --push \
-  .
-
-docker buildx imagetools inspect "${image}:${tag}"
-docker buildx imagetools inspect "${image}:latest"
-'''

@@ -1,0 +1,15 @@
+# Okteto/Syncthing sync-ignore for the cluster-sync dev loop.
+#
+# CRITICAL: the dev container's deps live in the baked Linux venv at /app/.venv
+# inside WORKDIR /app, and Reflex regenerates its Next.js project under /app/.web.
+# The repo-root sync (.:/app) would otherwise push the host's macOS .venv and a
+# stale .web over them. Excluding them here keeps the baked venv + generated .web
+# intact so the dev server runs against the image's own Linux artefacts.
+
+.venv
+.web
+__pycache__
+*.pyc
+.git
+.folio_uploads
+.states

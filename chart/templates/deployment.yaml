@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "folio.fullname" . }}
+  labels:
+    {{- include "folio.labels" . | nindent 4 }}
+    {{- include "folio.momokayaLabels" . | nindent 4 }}
+    app.kubernetes.io/component: folio
+  annotations:
+    {{- include "folio.momokayaAnnotations" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "folio.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: folio
+  template:
+    metadata:
+      labels:
+        {{- include "folio.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: folio
+        {{- include "folio.momokayaLabels" . | nindent 8 }}
+      annotations:
+        {{- include "folio.momokayaAnnotations" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        # Wait for Postgres to be reachable, then apply the Reflex/alembic
+        # migrations. Uses the RUNTIME image (the venv already on PATH) rather
+        # than rebuilding/re-syncing; idempotent, so it runs on every rollout.
+        - name: db-migrate
+          image: {{ include "folio.imageRef" .Values.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "folio.fullname" . }}
+            - secretRef:
+                name: {{ include "folio.runtimeSecretName" . }}
+                optional: {{ .Values.secrets.optional }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              until python -c "import psycopg2; psycopg2.connect('$DATABASE_URL')" > /dev/null 2>&1; do
+                echo "waiting for postgres..."
+                sleep 2
+              done
+              reflex db migrate
+      containers:
+        - name: folio
+          image: {{ include "folio.imageRef" .Values.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+            - name: backend
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "folio.fullname" . }}
+            - secretRef:
+                name: {{ include "folio.runtimeSecretName" . }}
+                optional: {{ .Values.secrets.optional }}
+          # Tolerant of first-import work + the DB dependency check on cold
+          # start; readiness still gates on the app serving _health.
+          startupProbe:
+            httpGet:
+              path: /_health
+              port: 3000
+            periodSeconds: 5
+            failureThreshold: 120 # ~10 minutes
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: 3000
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /_health
+              port: 3000
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

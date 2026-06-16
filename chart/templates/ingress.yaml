@@ -1,0 +1,60 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "folio.fullname" . }}
+  labels:
+    {{- include "folio.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - secretName: {{ printf "%s-tls" (include "folio.fullname" .) | trunc 63 | trimSuffix "-" }}
+      hosts:
+        - {{ .Values.ingress.host | quote }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "folio.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}
+{{- $root := . }}
+{{- range $name, $url := .Values.momokaya.urls }}
+{{- if and $url.host (or (eq $url.kind "web") (eq $url.kind "api")) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ printf "%s-%s" (include "folio.fullname" $root) $name | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "folio.labels" $root | nindent 4 }}
+    {{- include "folio.momokayaLabels" $root | nindent 4 }}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    {{- include "folio.momokayaAnnotations" $root | nindent 4 }}
+spec:
+  ingressClassName: {{ $root.Values.ingress.className }}
+  tls:
+    - secretName: {{ printf "%s-%s-tls" (include "folio.fullname" $root) $name | trunc 63 | trimSuffix "-" }}
+      hosts:
+        - {{ $url.host | quote }}
+  rules:
+    - host: {{ $url.host | quote }}
+      http:
+        paths:
+          - path: {{ default "/" $url.path | quote }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "folio.fullname" $root }}
+                port:
+                  number: {{ $root.Values.service.port }}
+{{- end }}
+{{- end }}

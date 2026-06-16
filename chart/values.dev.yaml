@@ -1,0 +1,37 @@
+# Ephemeral Okteto dev environment overrides (momokaya-dev-folio-$id).
+#
+# The dev container is replaced by Okteto with `reflex run --env dev` (see
+# okteto.yml). The runtime Secret `folio` (DATABASE_URL, POSTGRES_PASSWORD,
+# FOLIO_BUCKET_*) is materialized into the namespace by Momokaya infra/ESO; it
+# is never stored in Helm values.
+
+namespace:
+  create: true
+
+image:
+  pullPolicy: Always
+
+secrets:
+  existingSecret: folio
+
+# Per-run in-cluster Postgres + MinIO back the dev environment.
+postgres:
+  enabled: true
+
+minio:
+  enabled: true
+
+momokaya:
+  repo: folio
+  envKind: dev
+  urls:
+    web:
+      host: folio-dev.momokaya.ee
+      path: /
+      service: folio
+      port: 3000
+      kind: web
+      internalService: folio
+      internalPort: 3000
+      readiness: ready
+      exposure: authenticated

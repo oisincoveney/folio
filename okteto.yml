@@ -1,0 +1,35 @@
+# Folio — Okteto dev manifest (Okteto-convention migration).
+#
+# dev-only: this manifest carries no deploy:/destroy: hooks. The Helm dev
+# release is created by `mise run dev` (the `_dev:env` task) before Okteto
+# attaches; teardown is `mise run dev:down`. Native local development remains
+# `mise run dev:local`.
+#
+# Okteto replaces the container command with `reflex run --env dev`, syncing
+# the host source into /app. Deps + Reflex's generated .web are sync-excluded
+# via .stignore, so the dev server runs against the baked Linux venv. The first
+# `okteto up` is slow because `--env dev` cold-starts an in-container `next dev`
+# (npm install for .web), but the persistentVolume keeps it warm thereafter.
+
+dev:
+  folio:
+    selector:
+      app.kubernetes.io/component: folio
+    container: folio
+    image: ghcr.io/oisincoveney/folio:devbase
+    workdir: /app
+    command: reflex run --env dev --backend-host 0.0.0.0 --frontend-port 3000 --backend-port 8000
+    sync:
+      - .:/app
+    forward:
+      - 3000:3000
+      - 8000:8000
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REFLEX_API_URL: http://localhost:3000
+      MOMOKAYA_ENV_ID: ${MOMOKAYA_ENV_ID}
+    persistentVolume:
+      enabled: true
+      size: 10Gi
+    volumes:
+      - /root/.cache/uv
