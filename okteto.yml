@@ -8,8 +8,10 @@
 # Okteto replaces the container command with `reflex run --env dev`, syncing
 # the host source into /app. Deps + Reflex's generated .web are sync-excluded
 # via .stignore, so the dev server runs against the baked Linux venv. The first
-# `okteto up` is slow because `--env dev` cold-starts an in-container `next dev`
-# (npm install for .web), but the persistentVolume keeps it warm thereafter.
+# `okteto up` is slow because `--env dev` cold-starts an in-container Vite dev
+# server (npm install for .web), but the persistentVolume keeps it warm
+# thereafter. Access is via the momokaya dev ingress (folio-dev.momokaya.ee);
+# no local `forward:` (it clashes across apps on the shared ports).
 
 dev:
   folio:
@@ -21,9 +23,6 @@ dev:
     command: reflex run --env dev --backend-host 0.0.0.0 --frontend-port 3000 --backend-port 8000
     sync:
       - .:/app
-    forward:
-      - 3000:3000
-      - 8000:8000
     environment:
       # DATABASE_URL + FOLIO_BUCKET_* come from the deployment's envFrom
       # (secretRef folio-secrets / configmap), which okteto preserves — don't
