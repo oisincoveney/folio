@@ -25,7 +25,9 @@ dev:
       - 3000:3000
       - 8000:8000
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      # DATABASE_URL + FOLIO_BUCKET_* come from the deployment's envFrom
+      # (secretRef folio-secrets / configmap), which okteto preserves — don't
+      # re-declare DATABASE_URL here or an unset shell var blanks it.
       REFLEX_API_URL: http://localhost:3000
       MOMOKAYA_ENV_ID: ${MOMOKAYA_ENV_ID}
     persistentVolume:
