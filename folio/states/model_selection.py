@@ -10,6 +10,8 @@ attribute access on a shared slot in the state tree.
 
 from __future__ import annotations
 
+import asyncio
+
 import reflex as rx
 
 from folio.services import parser as parse_mod
@@ -21,9 +23,14 @@ class ModelSelectionState(rx.State):
     model: str = ""
     models: list[dict] = []
 
-    def load_models(self) -> None:
-        """Populate the model list from parse module options."""
-        options = parse_mod.get_model_options()
+    async def load_models(self) -> None:
+        """Populate the model list from parse module options.
+
+        Runs the blocking ``opencode models`` subprocess on a thread pool so the
+        Reflex event loop is not stalled (fixes the ``EventFuture`` worker crash
+        that occurred with the synchronous version in Reflex 0.9).
+        """
+        options = await asyncio.to_thread(parse_mod.get_model_options)
         self.models = [{"id": m["id"], "pdf": bool(m["pdf"])} for m in options]
         if not self.model:
             self.model = parse_mod.get_default_model()

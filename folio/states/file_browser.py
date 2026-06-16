@@ -2,10 +2,37 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import reflex as rx
 
 from folio import aws
 from folio.services import exports
+
+
+def _fetch_browser_data() -> tuple[list[str], dict[str, list[dict]]]:
+    """Fetch month/file data from S3. Runs on a thread pool (blocking I/O)."""
+    bucket = aws.bucket_name()
+    if not bucket:
+        return [], {}
+    client = aws.s3()
+    months: dict[str, list[dict]] = {}
+    paginator = client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket):
+        for obj in page.get("Contents", []):
+            key: str = obj["Key"]
+            parts = key.split("/")
+            if len(parts) < 2:  # noqa: PLR2004
+                continue
+            month = parts[0]
+            months.setdefault(month, []).append({
+                "key": key,
+                "size": str(obj.get("Size", 0)),
+                "modified": obj["LastModified"].strftime("%Y-%m-%d %H:%M"),
+                "name": parts[-1],
+            })
+    sorted_months = sorted(months.keys(), reverse=True)
+    return sorted_months, months
 
 
 class FileBrowserState(rx.State):
@@ -16,29 +43,15 @@ class FileBrowserState(rx.State):
     browser_loading: bool = False
     browser_month: str = ""
 
-    def load_file_browser(self) -> None:
-        """Populate browser_months and browser_files from S3 bucket listing."""
-        bucket = aws.bucket_name()
-        if not bucket:
-            return
+    async def load_file_browser(self) -> None:
+        """Populate browser_months and browser_files from S3 bucket listing.
+
+        Runs the blocking boto3 pagination on a thread pool so the Reflex event
+        loop is not stalled (fixes the ``EventFuture`` worker crash).
+        """
         self.browser_loading = True
-        client = aws.s3()
-        months: dict[str, list[dict]] = {}
-        paginator = client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=bucket):
-            for obj in page.get("Contents", []):
-                key: str = obj["Key"]
-                parts = key.split("/")
-                if len(parts) < 2:  # noqa: PLR2004
-                    continue
-                month = parts[0]
-                months.setdefault(month, []).append({
-                    "key": key,
-                    "size": str(obj.get("Size", 0)),
-                    "modified": obj["LastModified"].strftime("%Y-%m-%d %H:%M"),
-                    "name": parts[-1],
-                })
-        self.browser_months = sorted(months.keys(), reverse=True)
+        sorted_months, months = await asyncio.to_thread(_fetch_browser_data)
+        self.browser_months = sorted_months
         self.browser_files = months
         if self.browser_months and not self.browser_month:
             self.browser_month = self.browser_months[0]

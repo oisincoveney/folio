@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 
 import reflex as rx
@@ -25,12 +26,19 @@ class DataViewState(rx.State):
     outstanding_counts: dict[str, int] = {}
     loading: bool = False
 
-    def load(self) -> None:
-        """Run the composite store query and unpack the result into fields."""
+    async def load(self) -> None:
+        """Run the composite store query and unpack the result into fields.
+
+        Runs the blocking database query on a thread pool so the Reflex event
+        loop is not stalled (fixes the ``EventFuture`` worker crash).
+        """
         self.loading = True
+        doc_type = self.doc_type
+        year = self.year
+        quarter = self.quarter or None
         try:
-            result = store_svc.query(
-                self.doc_type, self.year, self.quarter or None,
+            result = await asyncio.to_thread(
+                store_svc.query, doc_type, year, quarter,
             )
             self.records = result.records
             self.totals_eur = result.totals_eur
@@ -39,7 +47,7 @@ class DataViewState(rx.State):
         finally:
             self.loading = False
 
-    def set_doc_type(self, value: str | list[str]) -> None:
+    async def set_doc_type(self, value: str | list[str]) -> None:
         """Switch the active doc-type tab and reload.
 
         ``rx.segmented_control`` emits ``str`` for single-select and
@@ -50,19 +58,19 @@ class DataViewState(rx.State):
         if isinstance(value, list):
             value = value[0] if value else "invoice"
         self.doc_type = value
-        self.load()
+        await self.load()
 
-    def set_year(self, value: str | list[str]) -> None:
+    async def set_year(self, value: str | list[str]) -> None:
         """Switch the active year (``rx.select`` emits strings) and reload."""
         if isinstance(value, list):
             value = value[0] if value else str(_current_year())
         self.year = int(value)
-        self.load()
+        await self.load()
 
-    def set_quarter(self, value: str | list[str]) -> None:
+    async def set_quarter(self, value: str | list[str]) -> None:
         """Switch the active quarter (0 = all) and reload."""
         if isinstance(value, list):
             value = value[0] if value else "All"
         mapped = {"All": 0, "Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4}
         self.quarter = mapped.get(value, 0)
-        self.load()
+        await self.load()
