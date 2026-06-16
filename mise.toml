@@ -75,3 +75,36 @@ run = "uv run pytest"
 [tasks.check]
 description = "Run lint and typecheck together"
 depends = ["lint", "typecheck"]
+
+# ─── e2e ────────────────────────────────────────────────────────────────────
+# `mise run e2e` = port-forward the production folio pod locally, run the
+# Playwright suite against it, then tear down the port-forward.
+# Requires kubectl context "momokaya" (the folio pod runs there).
+# Set BASE_URL if you want to target a different host.
+[tasks.e2e]
+description = "Run Playwright e2e against the port-forwarded folio pod (kubectl context momokaya required)"
+run = """
+set -eu
+context=$(kubectl config current-context 2>/dev/null || true)
+if [ "$context" != "momokaya" ]; then
+  echo "Refusing to run: current kube context is '${context:-<none>}', expected 'momokaya'." >&2
+  exit 1
+fi
+# Start port-forward in background
+kubectl port-forward -n folio deployment/folio 3001:3000 &
+PF_PID=$!
+trap 'kill $PF_PID 2>/dev/null || true' EXIT
+# Wait for the port to open (up to 10 s)
+for i in $(seq 1 20); do
+  if curl -s --max-time 1 http://localhost:3001/ >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.5
+done
+# Run the suite
+cd e2e && npx playwright test --reporter=list
+"""
+
+[tasks."e2e:install"]
+description = "Install Playwright + Chromium browser in e2e/"
+run = "cd e2e && npm install && npx playwright install chromium"

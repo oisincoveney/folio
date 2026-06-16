@@ -1,0 +1,130 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Playwright classify journey
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # The CI runner cannot reach the production cluster directly; we run
+      # folio's Reflex app locally using testcontainers for Postgres + MinIO
+      # (same pattern as the pytest suite in tests/conftest.py). The opencode
+      # auth JSON is provided by the CI secret so classification is real.
+      BASE_URL: "http://localhost:3000"
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: folio
+          POSTGRES_PASSWORD: folio
+          POSTGRES_DB: folio
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: folio-e2e
+          MINIO_ROOT_PASSWORD: folio-e2e-secret
+        options: >-
+          --health-cmd "curl -sf http://localhost:9000/minio/health/live"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 9000:9000
+        volumes: []
+        # minio/minio needs the 'server' command
+        command: server /data
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up mise
+        uses: jdx/mise-action@v2
+
+      - name: Install Python deps
+        run: uv sync --all-groups
+        working-directory: .
+
+      - name: Create MinIO bucket
+        run: |
+          pip install boto3
+          python3 - <<'EOF'
+          import boto3
+          s3 = boto3.client('s3',
+            endpoint_url='http://localhost:9000',
+            aws_access_key_id='folio-e2e',
+            aws_secret_access_key='folio-e2e-secret',
+            region_name='us-east-1',
+          )
+          s3.create_bucket(Bucket='folio-e2e')
+          print("bucket created")
+          EOF
+
+      - name: Run Reflex DB migrations
+        env:
+          DATABASE_URL: postgresql://folio:folio@localhost:5432/folio
+          FOLIO_BUCKET_ENDPOINT: http://localhost:9000
+          FOLIO_BUCKET_ACCESS_KEY: folio-e2e
+          FOLIO_BUCKET_SECRET_KEY: folio-e2e-secret
+          FOLIO_BUCKET_REGION: us-east-1
+          FOLIO_BUCKET_NAME: folio-e2e
+        run: uv run reflex db migrate
+
+      - name: Start Reflex app
+        env:
+          DATABASE_URL: postgresql://folio:folio@localhost:5432/folio
+          FOLIO_BUCKET_ENDPOINT: http://localhost:9000
+          FOLIO_BUCKET_ACCESS_KEY: folio-e2e
+          FOLIO_BUCKET_SECRET_KEY: folio-e2e-secret
+          FOLIO_BUCKET_REGION: us-east-1
+          FOLIO_BUCKET_NAME: folio-e2e
+          OPENCODE_AUTH_JSON: ${{ secrets.OPENCODE_AUTH_JSON }}
+        run: |
+          uv run reflex run &
+          # Wait until the app is serving
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/ > /dev/null 2>&1; then
+              echo "folio is up"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Install Playwright
+        run: cd e2e && npm ci && npx playwright install chromium --with-deps
+
+      - name: Run Playwright e2e
+        env:
+          BASE_URL: http://localhost:3000
+        run: cd e2e && npx playwright test --reporter=github
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts-INFRA-070.04
+          path: test-artifacts/INFRA-070.04/
+          retention-days: 30

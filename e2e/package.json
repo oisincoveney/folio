@@ -1,0 +1,14 @@
+{
+  "name": "folio-e2e",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Playwright e2e tests for folio (Reflex doc-classifier)",
+  "scripts": {
+    "test": "playwright test",
+    "test:ci": "playwright test --reporter=github",
+    "install-browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.52.0"
+  }
+}
