@@ -19,3 +19,6 @@ wheels/
 
 # Claude Code session data
 .claude/
+
+# Reflex bun lockfile (generated, not portable across machines)
+reflex.lock/
