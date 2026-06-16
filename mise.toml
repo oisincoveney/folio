@@ -1,5 +1,7 @@
 [tools]
-helm = "3.19.4"
+# helm 4.2.0 (fleet pin): helm 3.19's `--create-namespace` conflicts with a
+# chart-rendered Namespace resource ("already exists"); helm 4 handles it.
+"aqua:helm/helm" = "4.2.0"
 kubectl = "1.33.9"
 python = "3.14.3"
 uv = "0.11.13"
