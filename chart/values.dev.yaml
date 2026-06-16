@@ -11,6 +11,10 @@ namespace:
 image:
   pullPolicy: Always
 
+# ghcr.io/oisincoveney/folio is private; pull with the ESO-reflected secret.
+imagePullSecrets:
+  - name: ghcr-pull-secret
+
 secrets:
   existingSecret: folio-secrets
 
