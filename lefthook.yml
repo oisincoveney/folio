@@ -1,0 +1,14 @@
+# Joins the fleet standard: lint + typecheck gate each commit. Picked up automatically
+# by the global ~/.git-hooks delegator — no `lefthook install` needed. Tools run through
+# folio's mise tasks (uv-backed ruff / pyright). Both verified green on the current tree.
+#
+# No pre-push `test` gate: folio's pytest suite brings up Postgres/MinIO via
+# testcontainers, so it needs a running Docker daemon — gating `git push` on Docker
+# would break pushes whenever it's down. Run `mise run test` in CI / locally instead.
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      run: mise run lint
+    typecheck:
+      run: mise run typecheck
