@@ -1,0 +1,6 @@
+dependencies:
+- name: momokaya-chart
+  repository: oci://ghcr.io/oisin-ee/charts
+  version: 0.1.0
+digest: sha256:b41506ffe792d8ac92d071b7dbe8f9b5e7acaf3ce59a0dee9268e8c0c797fc61
+generated: "2026-06-23T00:18:08.528687+03:00"

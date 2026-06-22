@@ -4,3 +4,12 @@ description: Folio Reflex app (single component) with gated Postgres + MinIO
 type: application
 version: 0.1.0
 appVersion: "latest"
+dependencies:
+  # momokaya-chart supplies the standard fleet building blocks — the
+  # okteto-aware .spec.replicas gate (replicaCount: null drops it from the SSA
+  # render so Okteto's field-manager doesn't conflict) and any future shared
+  # helpers. Pinned to the published OCI artifact; `helm dependency build`
+  # vendors it into charts/.
+  - name: momokaya-chart
+    version: 0.1.0
+    repository: oci://ghcr.io/oisin-ee/charts
