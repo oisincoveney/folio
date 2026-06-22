@@ -19,7 +19,8 @@ dev:
     sync:
       - .:/app
     environment:
-      REFLEX_API_URL: http://localhost:3000
+      REFLEX_API_URL: https://folio-dev.momokaya.ee
+      REFLEX_DEPLOY_URL: https://folio-dev.momokaya.ee
       MOMOKAYA_ENV_ID: ${MOMOKAYA_ENV_ID}
     persistentVolume:
       enabled: true
