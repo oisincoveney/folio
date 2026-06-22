@@ -28,10 +28,15 @@ FROM python:3.14-slim AS syscommon
 # Build deps for psycopg2 + reflex's node runtime; cleaned in the same layer.
 # iproute2/lsof/procps/git support the Okteto dev loop (ss/lsof for the dev
 # server, ps for process inspection, git for in-container tooling).
+# Node is installed via NodeSource Node 22 LTS (not Debian apt nodejs, which
+# ships Node 20 on python:3.14-slim/Debian trixie). Reflex 0.9.5 + Vite 8
+# require Node >= 22.12.0; Node 20 causes frontend never to bind :3000 (502).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        curl ca-certificates nodejs npm unzip \
+        curl ca-certificates unzip \
         iproute2 lsof procps git \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # uv binary from the official distroless image; avoids the `pip install uv`

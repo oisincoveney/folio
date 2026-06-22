@@ -13,7 +13,12 @@ uv = "0.11.13"
 # inner loop.
 [tasks.dev]
 description = "Start the cluster-sync dev loop (Helm dev release, then Okteto sync of folio)"
-depends = ["_dev:env", "_dev:folio"]
+# `_dev:folio` depends on `_dev:env`, so mise's dependency DAG runs the Helm
+# install to completion before `okteto up`. A flat `depends = [_dev:env,
+# _dev:folio]` runs both in PARALLEL (mise has no list-order guarantee), so
+# okteto attaches before the Deployment exists and aborts with "Didn't find an
+# application that matches the labels". The edge below is the ordering contract.
+depends = ["_dev:folio"]
 
 [tasks."_dev:env"]
 description = "Install the Helm dev release into the ephemeral momokaya-dev-folio namespace"
@@ -37,6 +42,7 @@ helm upgrade --install "folio-dev-$id" ./chart \
 
 [tasks."_dev:folio"]
 description = "Attach Okteto to the folio dev container"
+depends = ["_dev:env"]
 run = """
 set -eu
 id="${MOMOKAYA_ENV_ID:?MOMOKAYA_ENV_ID is required}"

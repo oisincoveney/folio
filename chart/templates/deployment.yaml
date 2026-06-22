@@ -9,7 +9,12 @@ metadata:
   annotations:
     {{- include "folio.momokayaAnnotations" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  {{- with .Values.replicaCount }}
+  # Omitted in dev (replicaCount: null in values.dev.yaml): the Okteto-synced
+  # dev container owns .spec.replicas, and helm-4 SSA would otherwise conflict
+  # ("conflict with \"okteto\" using apps/v1: .spec.replicas") on every re-run.
+  replicas: {{ . }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "folio.selectorLabels" . | nindent 6 }}

@@ -8,6 +8,10 @@
 namespace:
   create: true
 
+# Okteto owns .spec.replicas in dev (it scales the synced Deployment). Null
+# makes the chart omit the field so helm-4 SSA doesn't fight okteto on re-run.
+replicaCount: null
+
 image:
   pullPolicy: Always
 
