@@ -9,6 +9,9 @@ imagePullSecrets: []
 
 service:
   port: 3000
+  # backendPort: set to the reflex backend port (8000) in split-port dev mode.
+  # Absent (null/unset) in prod: single-process serves everything on port 3000.
+  backendPort: null
 
 ingress:
   enabled: false

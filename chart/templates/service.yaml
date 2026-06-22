@@ -8,12 +8,20 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    # Reflex in fullstack mode serves the frontend static export and the
-    # backend from a single process on 3000; the Service only exposes 3000.
+    # Frontend: Reflex prod serves a compiled build from a single process on
+    # port 3000. In split-port dev mode this is the Vite/Next dev server.
     - name: http
       port: {{ .Values.service.port }}
       targetPort: 3000
       protocol: TCP
+    {{- if .Values.service.backendPort }}
+    # Backend: reflex split-port dev mode runs the backend (socket.io event
+    # bus, /ping, /_upload) on a separate port. Absent in prod (single-process).
+    - name: backend
+      port: {{ .Values.service.backendPort }}
+      targetPort: {{ .Values.service.backendPort }}
+      protocol: TCP
+    {{- end }}
   selector:
     {{- include "folio.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: folio

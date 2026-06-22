@@ -49,6 +49,36 @@ spec:
     - host: {{ $url.host | quote }}
       http:
         paths:
+          {{- if $root.Values.service.backendPort }}
+          {{- /*
+            Reflex split-port dev mode: backend paths must be routed to :backendPort
+            BEFORE the catch-all / path (nginx Prefix longest-match picks these first).
+            /_event  — socket.io WS for state events (nginx handles WS upgrade natively)
+            /ping    — backend health / connection-check called by the reflex frontend
+            /_upload — file upload handler
+          */}}
+          - path: /_event
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "folio.fullname" $root }}
+                port:
+                  number: {{ $root.Values.service.backendPort }}
+          - path: /ping
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "folio.fullname" $root }}
+                port:
+                  number: {{ $root.Values.service.backendPort }}
+          - path: /_upload
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "folio.fullname" $root }}
+                port:
+                  number: {{ $root.Values.service.backendPort }}
+          {{- end }}
           - path: {{ default "/" $url.path | quote }}
             pathType: Prefix
             backend:

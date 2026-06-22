@@ -29,6 +29,11 @@ postgres:
 minio:
   enabled: true
 
+service:
+  # Reflex split-port dev mode: frontend on 3000, backend (socket.io/ping/upload)
+  # on 8000. The ingress routes /_event, /ping, /_upload to this port.
+  backendPort: 8000
+
 momokaya:
   repo: folio
   envKind: dev
