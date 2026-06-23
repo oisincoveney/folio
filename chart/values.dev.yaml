@@ -37,14 +37,16 @@ service:
 momokaya:
   repo: folio
   envKind: dev
-  urls:
-    web:
-      host: folio-dev.momokaya.ee
-      path: /
-      service: folio
-      port: 3000
-      kind: web
-      internalService: folio
-      internalPort: 3000
-      readiness: ready
-      exposure: authenticated
+  # Dual-exposure permanence (INFRA-074): folio-dev.momokaya.ee is now served by
+  # the platform-auth oauth2-proxy (infra k8s/apps/system/
+  # protected-operator-hosts.yaml, row folio-dev) which owns the public TLS host
+  # + verify-bot SSO and split-port-routes /_event /ping /_upload -> backend :8000
+  # and / -> frontend :3000 through to this env's `folio-dev-okteto` Service.
+  # `momokaya.urls.web` is the ONLY consumer of the chart's public ingress range
+  # (chart/templates/ingress.yaml) — it is the `exposure: authenticated` host. The
+  # chart ingress would render a SECOND IngressRoute for the same host (traefik
+  # then routes folio-dev unpredictably, breaking the socket.io WS), so the host
+  # entry is removed: the range skips when no url has a host, rendering zero chart
+  # ingresses. The env is reachable only through the auth proxy. `ingress.enabled`
+  # is already false in the base values and never produced this host's ingress.
+  urls: {}
