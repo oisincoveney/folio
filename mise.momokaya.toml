@@ -32,13 +32,14 @@ ns="momokaya-dev-folio-$id"
 # — a plain declarative helm install (the chart owns its namespace + labels),
 # separate from `okteto up` so the two never fight over replicas.
 helm upgrade --install "folio-dev-$id" ./chart \\
-  --namespace "$ns" --create-namespace \\
+  --namespace "$ns" --create-namespace --take-ownership \\
   --values chart/values.yaml --values chart/values.dev.yaml \\
   --set-string momokaya.envId="$id" --wait --timeout 15m
 """
 ["_dev:folio"]
 hide = true
 depends = ["_dev:env"]
+env = { OKTETO_BUILD_QUEUE_ENABLED = "false" }
 description = "Okteto cluster-sync inner loop for the folio component"
 run = """
 set -eu
