@@ -9,9 +9,11 @@ kind: Kustomization
 
 resources:
   - configmap.yaml
-  - postgres/pvc.yaml
-  - postgres/service.yaml
-  - postgres/statefulset.yaml
+  # postgres/pvc.yaml, postgres/service.yaml, postgres/statefulset.yaml removed:
+  # production DB migrated to CNPG Cluster `folio-db` (oisin-ee/infra
+  # k8s/manifests/folio-db). The StatefulSet + Service are pruned by ArgoCD;
+  # the Longhorn PVC (longhorn-retain SC) moves to Released state — data retained
+  # for rollback. See INFRA-079.12.
   - minio/pvc.yaml
   - minio/service.yaml
   - minio/statefulset.yaml

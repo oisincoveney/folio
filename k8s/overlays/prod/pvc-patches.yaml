@@ -6,13 +6,8 @@
 # the `folio-pre` ArgoCD Application with sync-wave -10.
 #
 # Local k3d has no Longhorn; the local overlay does not apply these patches.
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-data
-spec:
-  storageClassName: longhorn-retain
----
+# postgres-data PVC patch removed — DB migrated to CNPG (INFRA-079.12);
+# the postgres-data Longhorn volume is Released (longhorn-retain SC), data intact.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
