@@ -232,6 +232,7 @@ def _table_header() -> rx.Component:
 def results_table() -> rx.Component:
     """Render the two-column results view."""
     return rx.flex(
+        rx.box(on_mount=BatchState.start_pending_parse, display="none"),
         rx.flex(
             _table_header(),
             rx.box(

@@ -47,6 +47,7 @@ class BatchState(ModelSelectionState):
     saving: bool = False
     completed: int = 0
     total: int = 0
+    pending_parse_jobs: list[str] = []
     retry_queue: list[str] = []
     retry_running: bool = False
     staged_files: dict[str, list[str]] = {}
@@ -224,6 +225,7 @@ class BatchState(ModelSelectionState):
         self.saving = False
         self.completed = 0
         self.total = 0
+        self.pending_parse_jobs = []
         self.retry_queue = []
         self.retry_running = False
         self.staged_files = {}
@@ -322,29 +324,18 @@ class BatchState(ModelSelectionState):
 
     # --- upload + streaming ---
 
-    async def _collect_upload_chunks(
+    async def _collect_upload_files(
         self,
-        chunks: rx.UploadChunkIterator,
+        files: Iterable[rx.UploadFile],
     ) -> list[tuple[str, bytes]]:
-        """Collect upload chunks into ordered file payloads."""
-        file_order: list[str] = []
-        buffers: dict[str, bytearray] = {}
-
-        async for chunk in chunks:
-            if chunk.filename not in buffers:
-                buffers[chunk.filename] = bytearray()
-                file_order.append(chunk.filename)
-
-            buffer = buffers[chunk.filename]
-            if chunk.offset != len(buffer):
-                msg = (
-                    f"Upload chunk offset mismatch for {chunk.filename}: "
-                    f"expected {len(buffer)}, received {chunk.offset}"
-                )
-                raise ValueError(msg)
-            buffer.extend(chunk.data)
-
-        return [(name, bytes(buffers[name])) for name in file_order]
+        """Collect uploaded files into ordered byte payloads."""
+        uploaded_files: list[tuple[str, bytes]] = []
+        for file in files:
+            name = file.name
+            if not name:
+                continue
+            uploaded_files.append((name, await file.read()))
+        return uploaded_files
 
     def _stage_temp_files(
         self,
@@ -412,22 +403,26 @@ class BatchState(ModelSelectionState):
         self.parsing = False
         self.retry_running = False
 
-    @rx.event(background=True)
     async def handle_upload(
         self,
-        chunks: rx.UploadChunkIterator,
+        files: list[rx.UploadFile],
     ) -> None:
-        """Stage chunked PDFs, then parse through background state events."""
-        uploaded_files = await self._collect_upload_chunks(chunks)
+        """Stage uploaded PDFs and defer parsing until the results table mounts."""
+        uploaded_files = await self._collect_upload_files(files)
         if not uploaded_files:
             return
 
-        async with self:
-            temp_files = self._stage_temp_files(uploaded_files)
-            job_id = self._start_parse_queue(temp_files)
-
+        temp_files = self._stage_temp_files(uploaded_files)
+        job_id = self._start_parse_queue(temp_files)
         if job_id is not None:
-            await self._stream_parse_queue(job_id)
+            self.pending_parse_jobs.append(job_id)
+
+    def start_pending_parse(self) -> rx.event.EventCallback | None:
+        """Start parse jobs staged by the upload response."""
+        if not self.pending_parse_jobs:
+            return None
+        job_id = self.pending_parse_jobs.pop(0)
+        return BatchState.stream_parse(job_id)
 
     @rx.event(background=True)
     async def stream_parse(self, job_id: str) -> None:

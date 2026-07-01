@@ -13,7 +13,7 @@ import queue
 
 import pytest
 import reflex as rx
-from reflex_base.event import resolve_upload_chunk_handler_param
+from reflex_base.event import resolve_upload_handler_param
 from sqlmodel import select
 
 from folio.db_models import InvoiceRecord
@@ -49,18 +49,18 @@ def _invoice_result_event(file_key: str, source_id: str, file_id: str) -> dict:
     }
 
 
-def test_upload_handler_uses_chunk_upload_with_background_parse() -> None:
-    """Upload endpoint acks chunks while parse state streams over the event channel."""
-    param_name, annotation = resolve_upload_chunk_handler_param(BatchState.handle_upload)
+def test_upload_handler_uses_buffered_upload_with_deferred_parse() -> None:
+    """Upload response stages rows; table mount starts parse over the event channel."""
+    param_name, annotation = resolve_upload_handler_param(BatchState.handle_upload)
 
-    assert BatchState.handle_upload.is_background is True
-    assert param_name == "chunks"
-    assert annotation is rx.UploadChunkIterator
+    assert BatchState.handle_upload.is_background is False
+    assert param_name == "files"
+    assert annotation == list[rx.UploadFile]
 
 
 @pytest.mark.asyncio
 async def test_upload_handler_stages_rows_then_runs_background_parse(monkeypatch):
-    """Upload handler stages rows before consuming the parse queue."""
+    """Upload handler stages rows before the table mount starts parse."""
 
     def fake_start_parse_job(temp_files, _model):
         q: queue.Queue = queue.Queue()
@@ -84,6 +84,7 @@ async def test_upload_handler_stages_rows_then_runs_background_parse(monkeypatch
     assert state.has_rows is True
     assert state.rows[0].status == "done"
     assert state.status_counts["done"] == 1
+    assert state.pending_parse_jobs == []
     assert state.parsing is False
     assert _active_jobs == {}
 
