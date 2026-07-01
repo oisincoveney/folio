@@ -1,7 +1,7 @@
 # Production overlay for the momokaya cluster.
 #
 # Layered on top of the base manifests with:
-#   - production image (ghcr.io/oisincoveney/folio) + pull secret
+#   - production image (ghcr.io/oisin-ee/folio) + pull secret
 #   - internal ClusterIP Service consumed by infra-owned protected-operator-hosts
 #   - prod configmap values (bucket name and in-cluster Minio endpoint)
 #
@@ -20,8 +20,8 @@ resources:
 
 images:
   - name: folio
-    newName: ghcr.io/oisincoveney/folio
-    newTag: 47d9ed94fa97119b0ec1fdf5f5eeec66d323a8cf
+    newName: ghcr.io/oisin-ee/folio
+    newTag: 75940350ca1ba9dccbb7ece10c4d07ebf6436aa4
 
 patches:
   - path: deployment-patch.yaml
