@@ -31,8 +31,21 @@ async def upload_and_parse(
     files: Iterable[rx.UploadFile],
 ) -> None:
     """Run BatchState.handle_upload and drain the queued parse job."""
-    async for _ in BatchState.handle_upload.fn(state, list(files)):
-        pass
+    chunks = rx.UploadChunkIterator(maxsize=64)
+    for file in files:
+        name = file.name
+        if not name:
+            continue
+        await chunks.push(
+            rx.UploadChunk(
+                filename=name,
+                offset=0,
+                content_type="application/pdf",
+                data=await file.read(),
+            ),
+        )
+    await chunks.finish()
+    await BatchState.handle_upload.fn(state, chunks)
     if _active_jobs:
         await drain_active_job(state)
 

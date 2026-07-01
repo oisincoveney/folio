@@ -322,18 +322,29 @@ class BatchState(ModelSelectionState):
 
     # --- upload + streaming ---
 
-    async def _collect_upload_files(
+    async def _collect_upload_chunks(
         self,
-        files: Iterable[rx.UploadFile],
+        chunks: rx.UploadChunkIterator,
     ) -> list[tuple[str, bytes]]:
-        """Collect uploaded files into ordered byte payloads."""
-        uploaded_files: list[tuple[str, bytes]] = []
-        for file in files:
-            name = file.name
-            if not name:
-                continue
-            uploaded_files.append((name, await file.read()))
-        return uploaded_files
+        """Collect upload chunks into ordered file payloads."""
+        file_order: list[str] = []
+        buffers: dict[str, bytearray] = {}
+
+        async for chunk in chunks:
+            if chunk.filename not in buffers:
+                buffers[chunk.filename] = bytearray()
+                file_order.append(chunk.filename)
+
+            buffer = buffers[chunk.filename]
+            if chunk.offset != len(buffer):
+                msg = (
+                    f"Upload chunk offset mismatch for {chunk.filename}: "
+                    f"expected {len(buffer)}, received {chunk.offset}"
+                )
+                raise ValueError(msg)
+            buffer.extend(chunk.data)
+
+        return [(name, bytes(buffers[name])) for name in file_order]
 
     def _stage_temp_files(
         self,
@@ -401,45 +412,22 @@ class BatchState(ModelSelectionState):
         self.parsing = False
         self.retry_running = False
 
-    async def _stream_parse_queue_inline(
-        self,
-        job_id: str,
-    ) -> AsyncGenerator[None]:
-        """Consume parse events while the upload response streams state deltas."""
-        q = _active_jobs.get(job_id)
-        if q is None:
-            return
-        try:
-            while True:
-                event = await self._next_parse_event(q)
-                if event is None:
-                    self._finish_parse_queue()
-                    yield None
-                    break
-                self._apply_event(event)
-                if event.get("type") == "done":
-                    self._finish_parse_queue()
-                    yield None
-                    break
-                yield None
-        finally:
-            _active_jobs.pop(job_id, None)
-
+    @rx.event(background=True)
     async def handle_upload(
         self,
-        files: list[rx.UploadFile],
-    ) -> AsyncGenerator[rx.event.EventCallback | None]:
-        """Stage uploaded PDFs and stream parse state through the upload response."""
-        uploaded_files = await self._collect_upload_files(files)
+        chunks: rx.UploadChunkIterator,
+    ) -> None:
+        """Stage chunked PDFs, then parse through background state events."""
+        uploaded_files = await self._collect_upload_chunks(chunks)
         if not uploaded_files:
             return
 
-        temp_files = self._stage_temp_files(uploaded_files)
-        job_id = self._start_parse_queue(temp_files)
-        yield None
+        async with self:
+            temp_files = self._stage_temp_files(uploaded_files)
+            job_id = self._start_parse_queue(temp_files)
+
         if job_id is not None:
-            async for update in self._stream_parse_queue_inline(job_id):
-                yield update
+            await self._stream_parse_queue(job_id)
 
     @rx.event(background=True)
     async def stream_parse(self, job_id: str) -> None:

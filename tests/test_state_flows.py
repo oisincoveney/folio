@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import os
 import queue
-from typing import get_args, get_origin
 
 import pytest
 import reflex as rx
-from reflex_base.event import resolve_upload_handler_param
+from reflex_base.event import resolve_upload_chunk_handler_param
 from sqlmodel import select
 
 from folio.db_models import InvoiceRecord
@@ -50,19 +49,18 @@ def _invoice_result_event(file_key: str, source_id: str, file_id: str) -> dict:
     }
 
 
-def test_upload_handler_uses_buffered_upload_with_inline_stream() -> None:
-    """Upload endpoint owns row staging and parse StateUpdate streaming."""
-    param_name, annotation = resolve_upload_handler_param(BatchState.handle_upload)
+def test_upload_handler_uses_chunk_upload_with_background_parse() -> None:
+    """Upload endpoint acks chunks while parse state streams over the event channel."""
+    param_name, annotation = resolve_upload_chunk_handler_param(BatchState.handle_upload)
 
-    assert BatchState.handle_upload.is_background is False
-    assert param_name == "files"
-    assert get_origin(annotation) is list
-    assert get_args(annotation) == (rx.UploadFile,)
+    assert BatchState.handle_upload.is_background is True
+    assert param_name == "chunks"
+    assert annotation is rx.UploadChunkIterator
 
 
 @pytest.mark.asyncio
-async def test_upload_handler_streams_rows_and_parse_without_chained_event(monkeypatch):
-    """Upload handler streams row creation and parse result in one response."""
+async def test_upload_handler_stages_rows_then_runs_background_parse(monkeypatch):
+    """Upload handler stages rows before consuming the parse queue."""
 
     def fake_start_parse_job(temp_files, _model):
         q: queue.Queue = queue.Queue()
@@ -81,22 +79,13 @@ async def test_upload_handler_streams_rows_and_parse_without_chained_event(monke
     monkeypatch.setattr(parse_mod, "get_default_model", lambda: "test-model")
 
     state = BatchState()
-    updates = [
-        update
-        async for event in BatchState.handle_upload.fn(
-            state,
-            [make_upload_file("stream.pdf", b"%PDF-1.4 stream")],
-        )
-        for update in [event]
-    ]
+    await upload_and_parse(state, [make_upload_file("stream.pdf", b"%PDF-1.4 stream")])
 
     assert state.has_rows is True
     assert state.rows[0].status == "done"
     assert state.status_counts["done"] == 1
     assert state.parsing is False
     assert _active_jobs == {}
-    assert updates
-    assert all(update is None for update in updates)
 
 
 @pytest.mark.asyncio
