@@ -13,6 +13,7 @@ import queue
 
 import pytest
 import reflex as rx
+from reflex.event import Event
 from reflex_base.event import resolve_upload_handler_param
 from sqlmodel import select
 
@@ -50,7 +51,7 @@ def _invoice_result_event(file_key: str, source_id: str, file_id: str) -> dict:
 
 
 def test_upload_handler_uses_buffered_upload_with_deferred_parse() -> None:
-    """Upload response stages rows; returned event starts parse over the event channel."""
+    """Upload response stages rows; returned callback starts parse over the event channel."""
     param_name, annotation = resolve_upload_handler_param(BatchState.handle_upload)
 
     assert BatchState.handle_upload.is_background is False
@@ -59,8 +60,8 @@ def test_upload_handler_uses_buffered_upload_with_deferred_parse() -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_handler_returns_parse_event_after_staging(monkeypatch):
-    """Upload response queues the parse event after the job exists."""
+async def test_upload_handler_returns_parse_callback_after_staging(monkeypatch):
+    """Upload response queues a frontend parse callback after the job exists."""
 
     def fake_start_parse_job(temp_files, _model):
         q: queue.Queue = queue.Queue()
@@ -85,7 +86,10 @@ async def test_upload_handler_returns_parse_event_after_staging(monkeypatch):
     )
 
     assert parse_event is not None
-    assert parse_event.handler.fn.__name__ == "stream_parse"
+    event = Event.from_event_type(parse_event)[0]
+    assert event.name == "_call_script"
+    assert "stream_parse" in event.payload["callback"]
+    assert next(iter(_active_jobs)) in event.payload["javascript_code"]
 
     await drain_active_job(state)
 

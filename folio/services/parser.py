@@ -481,6 +481,12 @@ def _process_one(task: _ParseTask, q: queue.Queue) -> None:
         "model": task.model,
     })
 
+    q.put({
+        "type": "classifying",
+        "filename": task.orig_name,
+        "file_key": task.file_key,
+        "source_id": task.source_id,
+    })
     doc_type = _classify_doc(task, q)
     prompt = DOC_TYPE_PROMPT[doc_type]
 

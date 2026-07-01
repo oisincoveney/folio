@@ -249,6 +249,10 @@ class BatchState(ModelSelectionState):
             n = ev.get("parallelism")
             self._append_log(target, system_log(f"Running up to {n} files in parallel"))
 
+    def _on_classifying(self, idx: int) -> None:
+        self._patch_row(idx, status="active", parsing=True)
+        self._append_log(idx, system_log("Classifying document type"))
+
     def _on_attempt(self, ev: dict, idx: int) -> None:
         self._patch_row(idx, status="active", parsing=True)
         msg = f"Attempt {ev.get('attempt')} of {ev.get('max_attempts')}"
@@ -307,6 +311,8 @@ class BatchState(ModelSelectionState):
             self._on_batch_start(ev)
         elif ev_type == "raw_log" and idx is not None:
             self._append_log(idx, parse_opencode_line(ev))
+        elif ev_type == "classifying" and idx is not None:
+            self._on_classifying(idx)
         elif ev_type == "attempt" and idx is not None:
             self._on_attempt(ev, idx)
         elif ev_type == "retrying" and idx is not None:
@@ -404,8 +410,8 @@ class BatchState(ModelSelectionState):
     async def handle_upload(
         self,
         files: list[rx.UploadFile],
-    ) -> rx.event.EventCallback | None:
-        """Stage uploaded PDFs and return the background parse event."""
+    ) -> rx.event.EventSpec | None:
+        """Stage uploaded PDFs and return a frontend callback that starts parsing."""
         uploaded_files = await self._collect_upload_files(files)
         if not uploaded_files:
             return None
@@ -413,7 +419,7 @@ class BatchState(ModelSelectionState):
         temp_files = self._stage_temp_files(uploaded_files)
         job_id = self._start_parse_queue(temp_files)
         if job_id is not None:
-            return BatchState.stream_parse(job_id)
+            return rx.call_script(f'"{job_id}"', callback=BatchState.stream_parse)
         return None
 
     @rx.event(background=True)

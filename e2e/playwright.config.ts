@@ -23,8 +23,8 @@ export default defineConfig({
   /* Fail fast in CI; no retries (classification is deterministic with real opencode) */
   retries: 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
-  /* Conservative timeout — classification via opencode can take 30-90 s */
-  timeout: 180_000,
+  /* Real OpenCode path can consume parser.py's 60s classify + 2x120s extract ceiling. */
+  timeout: 420_000,
   /* Default assertion timeout — generous for state updates via WebSocket */
   expect: {
     timeout: 30_000,

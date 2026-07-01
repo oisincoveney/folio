@@ -70,6 +70,14 @@ def test_batch_start_with_no_rows_is_safe():
 # --- attempt event ---
 
 
+def test_classifying_logs_progress_and_marks_active():
+    s = _state([_row("a.pdf")])
+    s._apply_event({"type": "classifying", "file_key": "a.pdf"})
+    assert s.rows[0].status == "active"
+    assert s.rows[0].parsing is True
+    assert any("Classifying document type" in e.body for e in s.rows[0].logs)
+
+
 def test_attempt_logs_attempt_number_and_marks_active():
     s = _state([_row("a.pdf")])
     s._apply_event(

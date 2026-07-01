@@ -66,11 +66,11 @@ test("classify journey: upload → classify → save → data view shows record"
   // button only renders when done count > 0 (results_table.py _table_header).
   // This is the exact user-visible signal that classification succeeded.
   //
-  // Per-assertion timeout of 90 s covers real opencode PDF classification
-  // latency (typically 30-60 s). The overall test timeout is 180 s.
+  // Parser ceiling is 60 s for doc-type classification plus two 120 s extract
+  // attempts; the assertion timeout matches that contract with UI margin.
   await expect(
     page.getByRole("button", { name: "Save completed" })
-  ).toBeVisible({ timeout: 90_000 });
+  ).toBeVisible({ timeout: 330_000 });
 
   // ── Step 4: Save the classified record ─────────────────────────────────────
   // "Save completed" triggers BatchState.save_all_done() → ingestion_svc
