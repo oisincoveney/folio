@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import os
 import queue
+from typing import get_args, get_origin
 
 import pytest
 import reflex as rx
-from reflex_base.event import resolve_upload_chunk_handler_param
+from reflex_base.event import resolve_upload_handler_param
 from sqlmodel import select
 
 from folio.db_models import InvoiceRecord
@@ -49,18 +50,60 @@ def _invoice_result_event(file_key: str, source_id: str, file_id: str) -> dict:
     }
 
 
-def test_upload_handler_uses_background_chunk_stream() -> None:
-    """Upload endpoint can ack independently of the long parse stream."""
-    param_name, annotation = resolve_upload_chunk_handler_param(BatchState.handle_upload)
+def test_upload_handler_uses_buffered_upload_with_backend_parse_event() -> None:
+    """Upload endpoint streams initial row state before parse continues."""
+    param_name, annotation = resolve_upload_handler_param(BatchState.handle_upload)
 
-    assert BatchState.handle_upload.is_background is True
+    assert BatchState.handle_upload.is_background is False
     assert param_name == "files"
-    assert annotation is rx.UploadChunkIterator
+    assert get_origin(annotation) is list
+    assert get_args(annotation) == (rx.UploadFile,)
+
+
+@pytest.mark.asyncio
+async def test_upload_handler_stages_rows_then_yields_background_parse(monkeypatch):
+    """Upload handler stages rows before yielding backend parse continuation."""
+
+    def fake_start_parse_job(temp_files, _model):
+        q: queue.Queue = queue.Queue()
+        for name, _tmp_path, file_key, source_id in temp_files:
+            q.put({
+                "type": "start",
+                "file_key": file_key,
+                "source_id": source_id,
+                "filename": name,
+            })
+            q.put(_invoice_result_event(file_key, source_id, f"fid-{file_key}"))
+        q.put({"type": "done"})
+        return q
+
+    monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
+    monkeypatch.setattr(parse_mod, "get_default_model", lambda: "test-model")
+
+    state = BatchState()
+    events = [
+        event
+        async for event in BatchState.handle_upload.fn(
+            state,
+            [make_upload_file("stream.pdf", b"%PDF-1.4 stream")],
+        )
+    ]
+
+    assert state.has_rows is True
+    assert state.parsing is True
+    assert state.rows[0].status == "pending"
+    assert len(events) == 1
+    assert events[0].handler.fn.__name__ == "stream_parse"
+
+    await drain_active_job(state)
+
+    assert state.rows[0].status == "done"
+    assert state.status_counts["done"] == 1
 
 
 @pytest.mark.asyncio
 async def test_upload_stream_stages_and_consumes_parse_job(monkeypatch):
-    """Upload stream stages files, starts parser, and consumes the parse queue."""
+    """Upload stages files, starts parser, and consumes the parse queue."""
 
     def fake_start_parse_job(temp_files, _model):
         q: queue.Queue = queue.Queue()

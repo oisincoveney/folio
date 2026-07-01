@@ -321,26 +321,18 @@ class BatchState(ModelSelectionState):
 
     # --- upload + streaming ---
 
-    async def _collect_upload_chunks(
+    async def _collect_upload_files(
         self,
-        files: rx.UploadChunkIterator,
+        files: Iterable[rx.UploadFile],
     ) -> list[tuple[str, bytes]]:
-        """Collect streamed upload chunks into ordered file byte payloads."""
-        buffers: dict[str, bytearray] = {}
-        order: list[str] = []
-        async for chunk in files:
-            name = chunk.filename
+        """Collect uploaded files into ordered byte payloads."""
+        uploaded_files: list[tuple[str, bytes]] = []
+        for file in files:
+            name = file.name
             if not name:
                 continue
-            if name not in buffers:
-                buffers[name] = bytearray()
-                order.append(name)
-            data = buffers[name]
-            end = chunk.offset + len(chunk.data)
-            if len(data) < end:
-                data.extend(b"\0" * (end - len(data)))
-            data[chunk.offset:end] = chunk.data
-        return [(name, bytes(buffers[name])) for name in order]
+            uploaded_files.append((name, await file.read()))
+        return uploaded_files
 
     def _stage_temp_files(
         self,
@@ -392,18 +384,19 @@ class BatchState(ModelSelectionState):
         self.parsing = True
         return job_id
 
-    @rx.event(background=True)
-    async def handle_upload(self, files: rx.UploadChunkIterator) -> None:
-        """Stage uploaded PDFs and stream their parse job after upload ack."""
-        uploaded_files = await self._collect_upload_chunks(files)
+    async def handle_upload(
+        self,
+        files: list[rx.UploadFile],
+    ) -> AsyncGenerator[rx.event.EventCallback]:
+        """Stage uploaded PDFs and queue their parse job."""
+        uploaded_files = await self._collect_upload_files(files)
         if not uploaded_files:
             return
 
-        async with self:
-            temp_files = self._stage_temp_files(uploaded_files)
-            job_id = self._start_parse_queue(temp_files)
+        temp_files = self._stage_temp_files(uploaded_files)
+        job_id = self._start_parse_queue(temp_files)
         if job_id is not None:
-            await self._stream_parse_queue(job_id)
+            yield BatchState.stream_parse(job_id)
 
     @rx.event(background=True)
     async def stream_parse(self, job_id: str) -> None:

@@ -26,47 +26,14 @@ def make_upload_file(name: str, data: bytes) -> rx.UploadFile:
     return rx.UploadFile(file=io.BytesIO(data), path=Path(name))
 
 
-class MemoryUploadChunks:
-    """Small async iterator matching Reflex's upload chunk protocol."""
-
-    def __init__(self, chunks: Iterable[rx.UploadChunk]) -> None:
-        self._chunks = iter(chunks)
-
-    def __aiter__(self) -> "MemoryUploadChunks":
-        return self
-
-    async def __anext__(self) -> rx.UploadChunk:
-        try:
-            return next(self._chunks)
-        except StopIteration as exc:
-            raise StopAsyncIteration from exc
-
-
-def make_upload_chunks(files: Iterable[rx.UploadFile]) -> MemoryUploadChunks:
-    """Convert buffered test upload files into a chunk stream."""
-    chunks = []
-    for file in files:
-        name = file.name
-        if not name:
-            continue
-        file.file.seek(0)
-        chunks.append(
-            rx.UploadChunk(
-                filename=name,
-                offset=0,
-                content_type="application/pdf",
-                data=file.file.read(),
-            ),
-        )
-    return MemoryUploadChunks(chunks)
-
-
 async def upload_and_parse(
     state: BatchState,
     files: Iterable[rx.UploadFile],
 ) -> None:
-    """Run BatchState.handle_upload through its streaming upload seam."""
-    await BatchState.handle_upload.fn(state, make_upload_chunks(files))
+    """Run BatchState.handle_upload and drain the queued parse job."""
+    async for _ in BatchState.handle_upload.fn(state, list(files)):
+        pass
+    await drain_active_job(state)
 
 
 async def drain_active_job(state) -> None:  # noqa: ANN001
@@ -85,5 +52,7 @@ async def drain_active_job(state) -> None:  # noqa: ANN001
             break
         state._apply_event(event)  # noqa: SLF001
         if event.get("type") == "done":
+            state.parsing = False
+            state.retry_running = False
             break
     _active_jobs.pop(job_id, None)
