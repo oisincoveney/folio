@@ -81,7 +81,7 @@ def test_store_query_respects_quarter(clean_db) -> None:
     assert {r["file_key"] for r in q2.records} == {"q2a"}
 
 
-def test_data_view_state_load_populates_fields(clean_db) -> None:
+async def test_data_view_state_load_populates_fields(clean_db) -> None:
     """``DataViewState.load`` unpacks the StoreQuery into its fields."""
     _seed_invoice(
         file_key="dv1", amount="200.00", currency="EUR", saved_at="2025-02-10",
@@ -91,7 +91,7 @@ def test_data_view_state_load_populates_fields(clean_db) -> None:
     state.doc_type = "invoice"
     state.year = 2025
     state.quarter = 0
-    state.load()
+    await state.load()
 
     assert len(state.records) == 1
     assert state.records[0]["file_key"] == "dv1"

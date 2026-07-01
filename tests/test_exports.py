@@ -41,13 +41,13 @@ def test_build_month_zip_returns_bytes_with_all_files(s3, clean_bucket, _bucket)
         assert zf.read("b.pdf") == b_bytes
 
 
-def test_download_month_zip_returns_download_spec(s3, clean_bucket, _bucket):
+async def test_download_month_zip_returns_download_spec(s3, clean_bucket, _bucket):
     """FileBrowserState.download_month_zip returns an rx.download EventSpec."""
     s3.put_object(Bucket=_bucket, Key="2024-03/a.pdf", Body=b"%PDF-1.4 a")
     s3.put_object(Bucket=_bucket, Key="2024-03/b.pdf", Body=b"%PDF-1.4 b")
 
     state = FileBrowserState()
-    state.load_file_browser()
+    await state.load_file_browser()
     assert "2024-03" in state.browser_files
 
     spec = state.download_month_zip("2024-03")

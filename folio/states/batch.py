@@ -363,7 +363,9 @@ class BatchState(ModelSelectionState):
         _active_jobs[job_id] = q
         self.total += len(temp_files)
         self.parsing = True
-        yield BatchState.stream_parse(job_id)  # pyright: ignore[reportReturnType]
+        # Reflex waits for chained events yielded by upload handlers. Returning a
+        # client callback lets the upload XHR finish before the long parse stream.
+        yield rx.call_script(f'"{job_id}"', callback=BatchState.stream_parse)
 
     @rx.event(background=True)
     async def stream_parse(self, job_id: str) -> None:

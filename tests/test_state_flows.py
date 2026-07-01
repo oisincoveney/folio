@@ -13,12 +13,13 @@ import queue
 
 import pytest
 import reflex as rx
+from reflex.event import Event
 from sqlmodel import select
 
-from folio.services import parser as parse_mod
 from folio.db_models import InvoiceRecord
 from folio.models import InvoiceRow
-from folio.states.batch import BatchState
+from folio.services import parser as parse_mod
+from folio.states.batch import BatchState, _active_jobs
 from folio.states.file_browser import FileBrowserState
 
 from tests._helpers import drain_active_job, make_upload_file, month_prefix
@@ -46,6 +47,44 @@ def _invoice_result_event(file_key: str, source_id: str, file_id: str) -> dict:
         "doc_type": "invoice",
         "raw_data": {"company": "Retry Vendor"},
     }
+
+
+@pytest.mark.asyncio
+async def test_upload_yields_frontend_callback_instead_of_long_parse_event(monkeypatch):
+    """Upload request returns quickly; frontend callback starts stream_parse."""
+
+    def fake_start_parse_job(temp_files, _model):
+        q: queue.Queue = queue.Queue()
+        for name, _tmp_path, file_key, source_id in temp_files:
+            q.put({
+                "type": "start",
+                "file_key": file_key,
+                "source_id": source_id,
+                "filename": name,
+            })
+        q.put({"type": "done"})
+        return q
+
+    monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
+
+    state = BatchState()
+    state.update_model("test-model")
+    specs = [
+        spec
+        async for spec in state.handle_upload([
+            make_upload_file("ack.pdf", b"%PDF-1.4 ack"),
+        ])
+    ]
+
+    assert len(specs) == 1
+    event = Event.from_event_type(specs[0])[0]
+    assert event.name == "_call_script"
+    assert "stream_parse" in event.payload["callback"]
+
+    job_id = next(iter(_active_jobs))
+    assert event.payload["javascript_code"] == f'"{job_id}"'
+
+    await drain_active_job(state)
 
 
 @pytest.mark.asyncio
@@ -234,7 +273,9 @@ async def test_file_browser_lists_saved_documents_by_month(
 
     # Upload + save two invoices with distinct identifiers so filenames differ.
     for inv_id, content in [("FB-1", b"%PDF-1.4 fb1"), ("FB-2", b"%PDF-1.4 fb2")]:
-        async for _ in state.handle_upload([make_upload_file(f"{inv_id}.pdf", content)]):
+        async for _ in state.handle_upload([
+            make_upload_file(f"{inv_id}.pdf", content),
+        ]):
             pass
         await drain_active_job(state)
         # Override invoice number to give distinct filenames.
@@ -246,7 +287,7 @@ async def test_file_browser_lists_saved_documents_by_month(
 
     # Drive the browser.
     browser = FileBrowserState()
-    browser.load_file_browser()
+    await browser.load_file_browser()
 
     month = month_prefix()
     assert month in browser.browser_months
