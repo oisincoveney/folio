@@ -7,6 +7,14 @@ from folio.states.batch import BatchState
 _PICK_ID = "folio-pdf-chooser"
 
 
+def upload_drop_events() -> list[rx.event.EventSpec]:
+    """Queue upload first, then start parsing after the upload response finishes."""
+    return [
+        BatchState.handle_upload(rx.upload_files(upload_id=_PICK_ID)),
+        BatchState.start_pending_parse(),
+    ]
+
+
 def file_picker() -> rx.Component:
     """Render PDF source buttons with optional parse progress."""
     return rx.flex(
@@ -22,9 +30,7 @@ def file_picker() -> rx.Component:
                     id=_PICK_ID,
                     accept={"application/pdf": [".pdf"]},
                     multiple=True,
-                    on_drop=BatchState.handle_upload(
-                        rx.upload_files(upload_id=_PICK_ID),
-                    ),
+                    on_drop=upload_drop_events(),
                     border="none",
                     padding="0",
                     width="fit-content",

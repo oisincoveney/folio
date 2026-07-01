@@ -16,6 +16,7 @@ import reflex as rx
 from reflex_base.event import resolve_upload_handler_param
 from sqlmodel import select
 
+from folio.components.file_picker import upload_drop_events
 from folio.db_models import InvoiceRecord
 from folio.models import InvoiceRow
 from folio.services import parser as parse_mod
@@ -50,7 +51,7 @@ def _invoice_result_event(file_key: str, source_id: str, file_id: str) -> dict:
 
 
 def test_upload_handler_uses_buffered_upload_with_deferred_parse() -> None:
-    """Upload response stages rows; table mount starts parse over the event channel."""
+    """Upload response stages rows; queued event starts parse over the event channel."""
     param_name, annotation = resolve_upload_handler_param(BatchState.handle_upload)
 
     assert BatchState.handle_upload.is_background is False
@@ -58,9 +59,21 @@ def test_upload_handler_uses_buffered_upload_with_deferred_parse() -> None:
     assert annotation == list[rx.UploadFile]
 
 
+def test_upload_drop_queues_parse_start_after_upload() -> None:
+    """Dropping files queues parse start after the upload REST event finishes."""
+    events = upload_drop_events()
+
+    assert [event.handler.fn.__name__ for event in events] == [
+        "handle_upload",
+        "start_pending_parse",
+    ]
+    assert events[0].client_handler_name == "uploadFiles"
+    assert events[1].client_handler_name == ""
+
+
 @pytest.mark.asyncio
 async def test_upload_handler_stages_rows_then_runs_background_parse(monkeypatch):
-    """Upload handler stages rows before the table mount starts parse."""
+    """Upload handler stages rows before the queued event starts parse."""
 
     def fake_start_parse_job(temp_files, _model):
         q: queue.Queue = queue.Queue()

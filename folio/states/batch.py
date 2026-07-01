@@ -407,7 +407,7 @@ class BatchState(ModelSelectionState):
         self,
         files: list[rx.UploadFile],
     ) -> None:
-        """Stage uploaded PDFs and defer parsing until the results table mounts."""
+        """Stage uploaded PDFs and queue parsing for the next client event."""
         uploaded_files = await self._collect_upload_files(files)
         if not uploaded_files:
             return
@@ -418,7 +418,7 @@ class BatchState(ModelSelectionState):
             self.pending_parse_jobs.append(job_id)
 
     def start_pending_parse(self) -> rx.event.EventCallback | None:
-        """Start parse jobs staged by the upload response."""
+        """Start the next parse job staged by an upload response."""
         if not self.pending_parse_jobs:
             return None
         job_id = self.pending_parse_jobs.pop(0)

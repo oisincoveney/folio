@@ -276,5 +276,4 @@ def results_table() -> rx.Component:
         flex_grow="1",
         overflow="hidden",
         align="stretch",
-        on_mount=BatchState.start_pending_parse,
     )
