@@ -50,8 +50,8 @@ def _invoice_result_event(file_key: str, source_id: str, file_id: str) -> dict:
     }
 
 
-def test_upload_handler_uses_buffered_upload_with_backend_parse_event() -> None:
-    """Upload endpoint streams initial row state before parse continues."""
+def test_upload_handler_uses_buffered_upload_with_inline_stream() -> None:
+    """Upload endpoint owns row staging and parse StateUpdate streaming."""
     param_name, annotation = resolve_upload_handler_param(BatchState.handle_upload)
 
     assert BatchState.handle_upload.is_background is False
@@ -61,8 +61,8 @@ def test_upload_handler_uses_buffered_upload_with_backend_parse_event() -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_handler_stages_rows_then_yields_background_parse(monkeypatch):
-    """Upload handler stages rows before yielding backend parse continuation."""
+async def test_upload_handler_streams_rows_and_parse_without_chained_event(monkeypatch):
+    """Upload handler streams row creation and parse result in one response."""
 
     def fake_start_parse_job(temp_files, _model):
         q: queue.Queue = queue.Queue()
@@ -81,24 +81,22 @@ async def test_upload_handler_stages_rows_then_yields_background_parse(monkeypat
     monkeypatch.setattr(parse_mod, "get_default_model", lambda: "test-model")
 
     state = BatchState()
-    events = [
-        event
+    updates = [
+        update
         async for event in BatchState.handle_upload.fn(
             state,
             [make_upload_file("stream.pdf", b"%PDF-1.4 stream")],
         )
+        for update in [event]
     ]
 
     assert state.has_rows is True
-    assert state.parsing is True
-    assert state.rows[0].status == "pending"
-    assert len(events) == 1
-    assert events[0].handler.fn.__name__ == "stream_parse"
-
-    await drain_active_job(state)
-
     assert state.rows[0].status == "done"
     assert state.status_counts["done"] == 1
+    assert state.parsing is False
+    assert _active_jobs == {}
+    assert updates
+    assert all(update is None for update in updates)
 
 
 @pytest.mark.asyncio

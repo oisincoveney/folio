@@ -13,7 +13,7 @@ from pathlib import Path
 
 import reflex as rx
 
-from folio.states.batch import BatchState
+from folio.states.batch import BatchState, _active_jobs
 
 
 def month_prefix() -> str:
@@ -33,7 +33,8 @@ async def upload_and_parse(
     """Run BatchState.handle_upload and drain the queued parse job."""
     async for _ in BatchState.handle_upload.fn(state, list(files)):
         pass
-    await drain_active_job(state)
+    if _active_jobs:
+        await drain_active_job(state)
 
 
 async def drain_active_job(state) -> None:  # noqa: ANN001

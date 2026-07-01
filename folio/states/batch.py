@@ -25,6 +25,7 @@ UPLOAD_DIR = Path(__file__).parent.parent.parent / ".folio_uploads"
 
 # Keyed by job_id; populated before stream_parse background task reads it.
 _active_jobs: dict[str, queue.Queue] = {}
+_PARSE_QUEUE_TIMEOUT_SECONDS = 130
 
 
 def _path_exists(p: str) -> bool:
@@ -384,19 +385,61 @@ class BatchState(ModelSelectionState):
         self.parsing = True
         return job_id
 
+    async def _next_parse_event(self, q: queue.Queue) -> dict | None:
+        """Read the next parser event, returning None when the queue stalls."""
+        try:
+            return await asyncio.to_thread(
+                q.get,
+                block=True,
+                timeout=_PARSE_QUEUE_TIMEOUT_SECONDS,
+            )
+        except queue.Empty:
+            return None
+
+    def _finish_parse_queue(self) -> None:
+        """Mark any parse queue consumer as stopped."""
+        self.parsing = False
+        self.retry_running = False
+
+    async def _stream_parse_queue_inline(
+        self,
+        job_id: str,
+    ) -> AsyncGenerator[None]:
+        """Consume parse events while the upload response streams state deltas."""
+        q = _active_jobs.get(job_id)
+        if q is None:
+            return
+        try:
+            while True:
+                event = await self._next_parse_event(q)
+                if event is None:
+                    self._finish_parse_queue()
+                    yield None
+                    break
+                self._apply_event(event)
+                if event.get("type") == "done":
+                    self._finish_parse_queue()
+                    yield None
+                    break
+                yield None
+        finally:
+            _active_jobs.pop(job_id, None)
+
     async def handle_upload(
         self,
         files: list[rx.UploadFile],
-    ) -> AsyncGenerator[rx.event.EventCallback]:
-        """Stage uploaded PDFs and queue their parse job."""
+    ) -> AsyncGenerator[rx.event.EventCallback | None]:
+        """Stage uploaded PDFs and stream parse state through the upload response."""
         uploaded_files = await self._collect_upload_files(files)
         if not uploaded_files:
             return
 
         temp_files = self._stage_temp_files(uploaded_files)
         job_id = self._start_parse_queue(temp_files)
+        yield None
         if job_id is not None:
-            yield BatchState.stream_parse(job_id)
+            async for update in self._stream_parse_queue_inline(job_id):
+                yield update
 
     @rx.event(background=True)
     async def stream_parse(self, job_id: str) -> None:
@@ -408,21 +451,19 @@ class BatchState(ModelSelectionState):
         q = _active_jobs.get(job_id)
         if q is None:
             return
-        while True:
-            try:
-                event = await asyncio.to_thread(q.get, block=True, timeout=130)
-            except queue.Empty:
+        try:
+            while True:
+                event = await self._next_parse_event(q)
                 async with self:
-                    self.parsing = False
-                    self.retry_running = False
-                break
-            async with self:
-                self._apply_event(event)
-                if event.get("type") == "done":
-                    self.parsing = False
-                    self.retry_running = False
-                    break
-        _active_jobs.pop(job_id, None)
+                    if event is None:
+                        self._finish_parse_queue()
+                        break
+                    self._apply_event(event)
+                    if event.get("type") == "done":
+                        self._finish_parse_queue()
+                        break
+        finally:
+            _active_jobs.pop(job_id, None)
 
     # --- save ---
 
