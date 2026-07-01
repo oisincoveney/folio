@@ -34,7 +34,7 @@ from folio.db_models import (
 )
 from folio.states.batch import BatchState
 
-from tests._helpers import drain_active_job, make_upload_file, month_prefix
+from tests._helpers import make_upload_file, month_prefix, upload_and_parse
 
 # ----------------------------------------------------------------------------
 # Tier 1: queue-level e2e (mock at start_parse_job)
@@ -76,9 +76,7 @@ async def test_upload_parse_save_end_to_end(s3, clean_db, clean_bucket, monkeypa
 
     state = BatchState()
     state.update_model("test-model")
-    async for _ in state.handle_upload([make_upload_file("invoice.pdf", pdf_bytes)]):
-        pass
-    await drain_active_job(state)
+    await upload_and_parse(state, [make_upload_file("invoice.pdf", pdf_bytes)])
 
     assert state.rows[0].status == "done"
     state.save_row("invoice.pdf")
@@ -117,9 +115,7 @@ async def test_upload_with_parse_error_marks_row_error_and_blocks_save(
 
     state = BatchState()
     state.update_model("test-model")
-    async for _ in state.handle_upload([make_upload_file("bad.pdf", b"%PDF-1.4 bad")]):
-        pass
-    await drain_active_job(state)
+    await upload_and_parse(state, [make_upload_file("bad.pdf", b"%PDF-1.4 bad")])
 
     assert state.rows[0].status == "error"
     state.save_all_done()
@@ -141,9 +137,7 @@ async def test_full_subprocess_e2e_uploads_parses_saves_and_downloads(
 
     state = BatchState()
     state.update_model("test-model")
-    async for _ in state.handle_upload([make_upload_file("invoice.pdf", pdf_bytes)]):
-        pass
-    await drain_active_job(state)
+    await upload_and_parse(state, [make_upload_file("invoice.pdf", pdf_bytes)])
 
     row = state.rows[0]
     assert row.status == "done", f"error={row.error!r}"
@@ -188,11 +182,10 @@ async def test_payments_csv_matches_wise_bulk_upload_schema(
     """payments.csv columns + static fields match Wise's bulk-payment format."""
     state = BatchState()
     state.update_model("test-model")
-    async for _ in state.handle_upload(
+    await upload_and_parse(
+        state,
         [make_upload_file("wise.pdf", b"%PDF-1.4 wise csv schema test")],
-    ):
-        pass
-    await drain_active_job(state)
+    )
     state.save_row("wise.pdf")
     assert state.rows[0].status_ok is True
 
@@ -220,11 +213,10 @@ async def test_payments_csv_increments_reference_across_saves(
     state = BatchState()
     state.update_model("test-model")
     for name in ("first.pdf", "second.pdf"):
-        async for _ in state.handle_upload(
+        await upload_and_parse(
+            state,
             [make_upload_file(name, b"%PDF-1.4 " + name.encode())],
-        ):
-            pass
-        await drain_active_job(state)
+        )
 
     state.save_row("first.pdf")
     state.save_row("second.pdf")
@@ -265,9 +257,7 @@ async def test_multi_doc_type_e2e_through_subprocess(
     state = BatchState()
     state.update_model("test-model")
     name = f"{doc_type}.pdf"
-    async for _ in state.handle_upload([make_upload_file(name, b"%PDF-1.4 " + name.encode())]):
-        pass
-    await drain_active_job(state)
+    await upload_and_parse(state, [make_upload_file(name, b"%PDF-1.4 " + name.encode())])
 
     row = state.rows[0]
     assert row.status == "done", f"error={row.error!r}"
@@ -307,9 +297,7 @@ async def test_concurrent_uploads_all_parse_successfully(
         make_upload_file(f"f{i}.pdf", f"%PDF-1.4 file {i}".encode())
         for i in range(3)
     ]
-    async for _ in state.handle_upload(files):
-        pass
-    await drain_active_job(state)
+    await upload_and_parse(state, files)
 
     assert len(state.rows) == 3
     statuses = [r.status for r in state.rows]
@@ -341,9 +329,7 @@ async def test_retry_after_subprocess_failure_eventually_succeeds(
 
     state = BatchState()
     state.update_model("test-model")
-    async for _ in state.handle_upload([make_upload_file("retry.pdf", b"%PDF-1.4 retry")]):
-        pass
-    await drain_active_job(state)
+    await upload_and_parse(state, [make_upload_file("retry.pdf", b"%PDF-1.4 retry")])
 
     row = state.rows[0]
     assert row.status == "done", f"error={row.error!r}"

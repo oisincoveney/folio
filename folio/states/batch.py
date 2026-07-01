@@ -6,7 +6,7 @@ import asyncio
 import queue
 import tempfile
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
 
 import reflex as rx
@@ -321,21 +321,38 @@ class BatchState(ModelSelectionState):
 
     # --- upload + streaming ---
 
-    async def handle_upload(
-        self, files: list[rx.UploadFile],
-    ) -> AsyncGenerator[rx.event.EventSpec]:
-        """Stage uploaded PDFs and kick off a parse job."""
-        if not files:
-            return
-        UPLOAD_DIR.mkdir(exist_ok=True)
-        model = self.model or parse_mod.get_default_model()
-        temp_files: list[tuple[str, str, str, str]] = []
-
-        for file in files:
-            name = file.name
+    async def _collect_upload_chunks(
+        self,
+        files: rx.UploadChunkIterator,
+    ) -> list[tuple[str, bytes]]:
+        """Collect streamed upload chunks into ordered file byte payloads."""
+        buffers: dict[str, bytearray] = {}
+        order: list[str] = []
+        async for chunk in files:
+            name = chunk.filename
             if not name:
                 continue
-            data = await file.read()
+            if name not in buffers:
+                buffers[name] = bytearray()
+                order.append(name)
+            data = buffers[name]
+            end = chunk.offset + len(chunk.data)
+            if len(data) < end:
+                data.extend(b"\0" * (end - len(data)))
+            data[chunk.offset:end] = chunk.data
+        return [(name, bytes(buffers[name])) for name in order]
+
+    def _stage_temp_files(
+        self,
+        uploaded_files: Iterable[tuple[str, bytes]],
+    ) -> list[tuple[str, str, str, str]]:
+        """Write uploaded bytes to temp files and return parser task tuples."""
+        UPLOAD_DIR.mkdir(exist_ok=True)
+        temp_files: list[tuple[str, str, str, str]] = []
+
+        for name, data in uploaded_files:
+            if not name:
+                continue
             source_id = str(uuid.uuid4())
             with tempfile.NamedTemporaryFile(
                 suffix=".pdf",
@@ -355,21 +372,46 @@ class BatchState(ModelSelectionState):
             )
             temp_files.append((name, tmp_name, name, source_id))
 
+        return temp_files
+
+    def _start_parse_queue(
+        self,
+        temp_files: list[tuple[str, str, str, str]],
+    ) -> str | None:
+        """Start parser workers for staged files and return the active job id."""
+        if not temp_files:
+            return None
         if not self.selected_file_key and self.rows:
             self.selected_file_key = self.rows[0].file_key
 
+        model = self.model or parse_mod.get_default_model()
         q = start_parse_job(temp_files, model)
         job_id = str(uuid.uuid4())
         _active_jobs[job_id] = q
         self.total += len(temp_files)
         self.parsing = True
-        # Reflex waits for chained events yielded by upload handlers. Returning a
-        # client callback lets the upload XHR finish before the long parse stream.
-        yield rx.call_script(f'"{job_id}"', callback=BatchState.stream_parse)
+        return job_id
+
+    @rx.event(background=True)
+    async def handle_upload(self, files: rx.UploadChunkIterator) -> None:
+        """Stage uploaded PDFs and stream their parse job after upload ack."""
+        uploaded_files = await self._collect_upload_chunks(files)
+        if not uploaded_files:
+            return
+
+        async with self:
+            temp_files = self._stage_temp_files(uploaded_files)
+            job_id = self._start_parse_queue(temp_files)
+        if job_id is not None:
+            await self._stream_parse_queue(job_id)
 
     @rx.event(background=True)
     async def stream_parse(self, job_id: str) -> None:
         """Consume parse events from the job queue and apply them to state."""
+        await self._stream_parse_queue(job_id)
+
+    async def _stream_parse_queue(self, job_id: str) -> None:
+        """Consume parse events from an active queue into state."""
         q = _active_jobs.get(job_id)
         if q is None:
             return

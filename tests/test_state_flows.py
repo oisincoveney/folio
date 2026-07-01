@@ -13,7 +13,7 @@ import queue
 
 import pytest
 import reflex as rx
-from reflex.event import Event
+from reflex_base.event import resolve_upload_chunk_handler_param
 from sqlmodel import select
 
 from folio.db_models import InvoiceRecord
@@ -22,7 +22,7 @@ from folio.services import parser as parse_mod
 from folio.states.batch import BatchState, _active_jobs
 from folio.states.file_browser import FileBrowserState
 
-from tests._helpers import drain_active_job, make_upload_file, month_prefix
+from tests._helpers import drain_active_job, make_upload_file, month_prefix, upload_and_parse
 
 
 # ----------------------------------------------------------------------------
@@ -49,9 +49,18 @@ def _invoice_result_event(file_key: str, source_id: str, file_id: str) -> dict:
     }
 
 
+def test_upload_handler_uses_background_chunk_stream() -> None:
+    """Upload endpoint can ack independently of the long parse stream."""
+    param_name, annotation = resolve_upload_chunk_handler_param(BatchState.handle_upload)
+
+    assert BatchState.handle_upload.is_background is True
+    assert param_name == "files"
+    assert annotation is rx.UploadChunkIterator
+
+
 @pytest.mark.asyncio
-async def test_upload_yields_frontend_callback_instead_of_long_parse_event(monkeypatch):
-    """Upload request returns quickly; frontend callback starts stream_parse."""
+async def test_upload_stream_stages_and_consumes_parse_job(monkeypatch):
+    """Upload stream stages files, starts parser, and consumes the parse queue."""
 
     def fake_start_parse_job(temp_files, _model):
         q: queue.Queue = queue.Queue()
@@ -62,6 +71,7 @@ async def test_upload_yields_frontend_callback_instead_of_long_parse_event(monke
                 "source_id": source_id,
                 "filename": name,
             })
+            q.put(_invoice_result_event(file_key, source_id, f"fid-{file_key}"))
         q.put({"type": "done"})
         return q
 
@@ -69,22 +79,12 @@ async def test_upload_yields_frontend_callback_instead_of_long_parse_event(monke
 
     state = BatchState()
     state.update_model("test-model")
-    specs = [
-        spec
-        async for spec in state.handle_upload([
-            make_upload_file("ack.pdf", b"%PDF-1.4 ack"),
-        ])
-    ]
 
-    assert len(specs) == 1
-    event = Event.from_event_type(specs[0])[0]
-    assert event.name == "_call_script"
-    assert "stream_parse" in event.payload["callback"]
+    await upload_and_parse(state, [make_upload_file("ack.pdf", b"%PDF-1.4 ack")])
 
-    job_id = next(iter(_active_jobs))
-    assert event.payload["javascript_code"] == f'"{job_id}"'
-
-    await drain_active_job(state)
+    assert state.rows[0].status == "done"
+    assert state.parsing is False
+    assert _active_jobs == {}
 
 
 @pytest.mark.asyncio
@@ -118,9 +118,7 @@ async def test_retry_failed_row_re_runs_through_parse_pipeline(monkeypatch):
     state.update_model("test-model")
 
     # 1. Upload → first parse errors out.
-    async for _ in state.handle_upload([make_upload_file("retry.pdf", b"%PDF-1.4 r")]):
-        pass
-    await drain_active_job(state)
+    await upload_and_parse(state, [make_upload_file("retry.pdf", b"%PDF-1.4 r")])
 
     assert state.rows[0].status == "error"
     assert state.completed == 1
@@ -128,7 +126,7 @@ async def test_retry_failed_row_re_runs_through_parse_pipeline(monkeypatch):
 
     # 2. Click retry. retry_row returns an EventSpec for run_retry_queue, which
     #    is an async generator we need to iterate to actually kick off the job.
-    state.parsing = False  # drain_active_job left it True for the done event
+    state.parsing = False
     state.retry_row("retry.pdf")
     async for _ in state.run_retry_queue():
         pass
@@ -170,12 +168,10 @@ async def test_retry_failed_picks_up_all_error_rows(monkeypatch):
 
     state = BatchState()
     state.update_model("test-model")
-    async for _ in state.handle_upload([
+    await upload_and_parse(state, [
         make_upload_file("a.pdf", b"a"),
         make_upload_file("b.pdf", b"b"),
-    ]):
-        pass
-    await drain_active_job(state)
+    ])
 
     assert all(r.status == "error" for r in state.rows)
 
@@ -210,9 +206,7 @@ async def test_user_edits_then_save_persists_edited_values(
     """User edits fields after parsing → save uses the edited values."""
     state = BatchState()
     state.update_model("test-model")
-    async for _ in state.handle_upload([make_upload_file("edit.pdf", b"%PDF-1.4 e")]):
-        pass
-    await drain_active_job(state)
+    await upload_and_parse(state, [make_upload_file("edit.pdf", b"%PDF-1.4 e")])
 
     # Parsed values from the fake opencode (invoice path).
     assert state.rows[0].company.startswith("Acme")
@@ -273,11 +267,9 @@ async def test_file_browser_lists_saved_documents_by_month(
 
     # Upload + save two invoices with distinct identifiers so filenames differ.
     for inv_id, content in [("FB-1", b"%PDF-1.4 fb1"), ("FB-2", b"%PDF-1.4 fb2")]:
-        async for _ in state.handle_upload([
+        await upload_and_parse(state, [
             make_upload_file(f"{inv_id}.pdf", content),
-        ]):
-            pass
-        await drain_active_job(state)
+        ])
         # Override invoice number to give distinct filenames.
         state.selected_file_key = f"{inv_id}.pdf"
         state.set_selected_invoice_number(inv_id)
@@ -325,9 +317,7 @@ async def test_download_file_generates_presigned_url_that_fetches_bytes(
     state = BatchState()
     state.update_model("test-model")
     pdf_bytes = b"%PDF-1.4 downloadable" + os.urandom(16)
-    async for _ in state.handle_upload([make_upload_file("dl.pdf", pdf_bytes)]):
-        pass
-    await drain_active_job(state)
+    await upload_and_parse(state, [make_upload_file("dl.pdf", pdf_bytes)])
     state.save_row("dl.pdf")
     saved_key = state.rows[0].saved_as
 

@@ -8,9 +8,12 @@ from __future__ import annotations
 import datetime
 import io
 import queue
+from collections.abc import Iterable
 from pathlib import Path
 
 import reflex as rx
+
+from folio.states.batch import BatchState
 
 
 def month_prefix() -> str:
@@ -21,6 +24,49 @@ def month_prefix() -> str:
 def make_upload_file(name: str, data: bytes) -> rx.UploadFile:
     """Build a real rx.UploadFile suitable for state.handle_upload."""
     return rx.UploadFile(file=io.BytesIO(data), path=Path(name))
+
+
+class MemoryUploadChunks:
+    """Small async iterator matching Reflex's upload chunk protocol."""
+
+    def __init__(self, chunks: Iterable[rx.UploadChunk]) -> None:
+        self._chunks = iter(chunks)
+
+    def __aiter__(self) -> "MemoryUploadChunks":
+        return self
+
+    async def __anext__(self) -> rx.UploadChunk:
+        try:
+            return next(self._chunks)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
+
+
+def make_upload_chunks(files: Iterable[rx.UploadFile]) -> MemoryUploadChunks:
+    """Convert buffered test upload files into a chunk stream."""
+    chunks = []
+    for file in files:
+        name = file.name
+        if not name:
+            continue
+        file.file.seek(0)
+        chunks.append(
+            rx.UploadChunk(
+                filename=name,
+                offset=0,
+                content_type="application/pdf",
+                data=file.file.read(),
+            ),
+        )
+    return MemoryUploadChunks(chunks)
+
+
+async def upload_and_parse(
+    state: BatchState,
+    files: Iterable[rx.UploadFile],
+) -> None:
+    """Run BatchState.handle_upload through its streaming upload seam."""
+    await BatchState.handle_upload.fn(state, make_upload_chunks(files))
 
 
 async def drain_active_job(state) -> None:  # noqa: ANN001

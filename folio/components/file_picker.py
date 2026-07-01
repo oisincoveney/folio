@@ -22,7 +22,9 @@ def file_picker() -> rx.Component:
                     id=_PICK_ID,
                     accept={"application/pdf": [".pdf"]},
                     multiple=True,
-                    on_drop=BatchState.handle_upload(rx.upload_files(upload_id=_PICK_ID)),
+                    on_drop=BatchState.handle_upload(
+                        rx.upload_files_chunk(upload_id=_PICK_ID),
+                    ),
                     border="none",
                     padding="0",
                     width="fit-content",
