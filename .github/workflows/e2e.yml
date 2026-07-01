@@ -41,22 +41,6 @@ jobs:
         ports:
           - 5432:5432
 
-      minio:
-        image: minio/minio:latest
-        env:
-          MINIO_ROOT_USER: folio-e2e
-          MINIO_ROOT_PASSWORD: folio-e2e-secret
-        options: >-
-          --health-cmd "curl -sf http://localhost:9000/minio/health/live"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-        ports:
-          - 9000:9000
-        volumes: []
-        # minio/minio needs the 'server' command
-        command: server /data
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,6 +51,40 @@ jobs:
       - name: Install Python deps
         run: uv sync --all-groups
         working-directory: .
+
+      - name: Install opencode
+        run: |
+          npm install -g opencode-ai@1.15.8
+          opencode --version
+
+      - name: Materialize opencode auth
+        env:
+          OPENCODE_AUTH_JSON: ${{ secrets.OPENCODE_AUTH_JSON }}
+        run: |
+          test -n "$OPENCODE_AUTH_JSON"
+          install -d -m 0700 "$HOME/.local/share/opencode"
+          printf '%s' "$OPENCODE_AUTH_JSON" > "$HOME/.local/share/opencode/auth.json"
+          chmod 0600 "$HOME/.local/share/opencode/auth.json"
+          python3 -m json.tool "$HOME/.local/share/opencode/auth.json" >/dev/null
+
+      - name: Start MinIO
+        run: |
+          docker run --detach --rm \
+            --name folio-e2e-minio \
+            --publish 9000:9000 \
+            --env MINIO_ROOT_USER=folio-e2e \
+            --env MINIO_ROOT_PASSWORD=folio-e2e-secret \
+            minio/minio:latest server /data
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live > /dev/null 2>&1; then
+              echo "minio is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "minio did not become healthy" >&2
+          docker logs folio-e2e-minio >&2
+          exit 1
 
       - name: Create MinIO bucket
         run: |
@@ -101,11 +119,10 @@ jobs:
           FOLIO_BUCKET_SECRET_KEY: folio-e2e-secret
           FOLIO_BUCKET_REGION: us-east-1
           FOLIO_BUCKET_NAME: folio-e2e
-          OPENCODE_AUTH_JSON: ${{ secrets.OPENCODE_AUTH_JSON }}
         run: |
           uv run reflex run &
           # Wait until the app is serving
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -sf http://localhost:3000/ > /dev/null 2>&1; then
               echo "folio is up"
               break
