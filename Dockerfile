@@ -123,7 +123,7 @@ RUN --mount=type=cache,target=/root/.npm \
 # --- runtime (final prod image) ---------------------------------------------
 FROM syscommon AS runtime
 
-LABEL org.opencontainers.image.source="https://github.com/oisincoveney/folio" \
+LABEL org.opencontainers.image.source="https://github.com/oisin-ee/folio" \
       org.opencontainers.image.description="Folio production Reflex app image" \
       org.opencontainers.image.licenses="UNLICENSED"
 

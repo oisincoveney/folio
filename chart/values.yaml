@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/oisincoveney/folio
+  repository: ghcr.io/oisin-ee/folio
   tag: latest
   pullPolicy: IfNotPresent
 

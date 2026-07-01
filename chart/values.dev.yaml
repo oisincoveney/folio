@@ -15,7 +15,7 @@ replicaCount: null
 image:
   pullPolicy: Always
 
-# ghcr.io/oisincoveney/folio is private; pull with the ESO-reflected secret.
+# ghcr.io/oisin-ee/folio is private; pull with the ESO-reflected secret.
 imagePullSecrets:
   - name: ghcr-pull-secret
 

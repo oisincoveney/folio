@@ -65,7 +65,7 @@ endpoints:
 docker build \
   --target runtime \
   --build-arg REFLEX_API_URL=https://folio.momokaya.ee \
-  -t ghcr.io/oisincoveney/folio:$(git rev-parse HEAD) .
+  -t ghcr.io/oisin-ee/folio:$(git rev-parse HEAD) .
 ```
 
 Do not rely on the Kubernetes runtime configmap to set this value for
