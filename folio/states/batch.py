@@ -47,7 +47,6 @@ class BatchState(ModelSelectionState):
     saving: bool = False
     completed: int = 0
     total: int = 0
-    pending_parse_jobs: list[str] = []
     retry_queue: list[str] = []
     retry_running: bool = False
     staged_files: dict[str, list[str]] = {}
@@ -225,7 +224,6 @@ class BatchState(ModelSelectionState):
         self.saving = False
         self.completed = 0
         self.total = 0
-        self.pending_parse_jobs = []
         self.retry_queue = []
         self.retry_running = False
         self.staged_files = {}
@@ -406,23 +404,17 @@ class BatchState(ModelSelectionState):
     async def handle_upload(
         self,
         files: list[rx.UploadFile],
-    ) -> None:
-        """Stage uploaded PDFs and queue parsing for the next client event."""
+    ) -> rx.event.EventCallback | None:
+        """Stage uploaded PDFs and return the background parse event."""
         uploaded_files = await self._collect_upload_files(files)
         if not uploaded_files:
-            return
+            return None
 
         temp_files = self._stage_temp_files(uploaded_files)
         job_id = self._start_parse_queue(temp_files)
         if job_id is not None:
-            self.pending_parse_jobs.append(job_id)
-
-    def start_pending_parse(self) -> rx.event.EventCallback | None:
-        """Start the next parse job staged by an upload response."""
-        if not self.pending_parse_jobs:
-            return None
-        job_id = self.pending_parse_jobs.pop(0)
-        return BatchState.stream_parse(job_id)
+            return BatchState.stream_parse(job_id)
+        return None
 
     @rx.event(background=True)
     async def stream_parse(self, job_id: str) -> None:
