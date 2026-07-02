@@ -13,7 +13,7 @@ import queue
 
 import pytest
 import reflex as rx
-from reflex_base.event import resolve_upload_handler_param
+from reflex_base.event import resolve_upload_chunk_handler_param
 from sqlmodel import select
 
 from folio.components.file_picker import upload_drop_event
@@ -23,7 +23,13 @@ from folio.services import parser as parse_mod
 from folio.states.batch import BatchState, _active_jobs
 from folio.states.file_browser import FileBrowserState
 
-from tests._helpers import drain_active_job, make_upload_file, month_prefix, upload_and_parse
+from tests._helpers import (
+    drain_active_job,
+    make_upload_chunks,
+    make_upload_file,
+    month_prefix,
+    upload_and_parse,
+)
 
 
 # ----------------------------------------------------------------------------
@@ -50,18 +56,19 @@ def _invoice_result_event(file_key: str, source_id: str, file_id: str) -> dict:
     }
 
 
-def test_upload_handler_uses_buffered_upload_with_returned_parse_event() -> None:
-    """Upload response stages rows, then returns the parse stream event."""
-    param_name, annotation = resolve_upload_handler_param(BatchState.handle_upload)
+def test_upload_handler_uses_background_chunk_upload() -> None:
+    """Upload response ACKs while the background handler consumes chunks."""
+    handler = BatchState.event_handlers["handle_upload"]
+    param_name, annotation = resolve_upload_chunk_handler_param(handler)
 
-    assert BatchState.handle_upload.is_background is False
-    assert param_name == "files"
-    assert annotation == list[rx.UploadFile]
+    assert handler.is_background is True
+    assert param_name == "chunks"
+    assert annotation == rx.UploadChunkIterator
 
 
 @pytest.mark.asyncio
-async def test_upload_handler_stages_and_returns_parse_event(monkeypatch):
-    """Upload response stages rows and returns a background parse event."""
+async def test_upload_handler_stages_and_consumes_parse_job(monkeypatch):
+    """Chunk upload stages rows and consumes the parse queue."""
 
     def fake_start_parse_job(temp_files, _model):
         q: queue.Queue = queue.Queue()
@@ -80,19 +87,15 @@ async def test_upload_handler_stages_and_returns_parse_event(monkeypatch):
     monkeypatch.setattr(parse_mod, "get_default_model", lambda: "test-model")
 
     state = BatchState()
-    parse_event = await BatchState.handle_upload.fn(
+    await BatchState.event_handlers["handle_upload"].fn(
         state,
-        [make_upload_file("stream.pdf", b"%PDF-1.4 stream")],
+        await make_upload_chunks([make_upload_file("stream.pdf", b"%PDF-1.4 stream")]),
     )
 
-    assert parse_event is not None
-    assert parse_event.handler.fn.__name__ == "stream_parse"
-    assert list(_active_jobs) == [parse_event.args[0][1]._js_expr.strip('"')]
     assert state.has_rows is True
-    assert state.rows[0].status == "pending"
-    assert state.parsing is True
-
-    _active_jobs.clear()
+    assert state.rows[0].status == "done"
+    assert state.parsing is False
+    assert _active_jobs == {}
 
 
 def test_upload_drop_event_uses_upload_rest_handler() -> None:
@@ -104,11 +107,12 @@ def test_upload_drop_event_uses_upload_rest_handler() -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_handler_returned_event_consumes_parse_job(monkeypatch):
-    """Upload stages rows; returned event identifies the parse job to drain."""
+async def test_upload_handler_accepts_split_chunks(monkeypatch):
+    """Chunk upload assembles split payloads before staging files."""
 
     def fake_start_parse_job(temp_files, _model):
         q: queue.Queue = queue.Queue()
+        assert temp_files[0][0] == "stream.pdf"
         for name, _tmp_path, file_key, source_id in temp_files:
             q.put({
                 "type": "start",
@@ -123,16 +127,27 @@ async def test_upload_handler_returned_event_consumes_parse_job(monkeypatch):
     monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
     monkeypatch.setattr(parse_mod, "get_default_model", lambda: "test-model")
 
-    state = BatchState()
-    parse_event = await BatchState.handle_upload.fn(
-        state,
-        [make_upload_file("stream.pdf", b"%PDF-1.4 stream")],
+    chunks = rx.UploadChunkIterator()
+    await chunks.push(
+        rx.UploadChunk(
+            filename="stream.pdf",
+            offset=0,
+            content_type="application/pdf",
+            data=b"%PDF",
+        ),
     )
+    await chunks.push(
+        rx.UploadChunk(
+            filename="stream.pdf",
+            offset=4,
+            content_type="application/pdf",
+            data=b"-1.4 stream",
+        ),
+    )
+    await chunks.finish()
 
-    assert parse_event is not None
-    assert parse_event.handler.fn.__name__ == "stream_parse"
-
-    await drain_active_job(state)
+    state = BatchState()
+    await BatchState.event_handlers["handle_upload"].fn(state, chunks)
 
     assert state.has_rows is True
     assert state.rows[0].status == "done"

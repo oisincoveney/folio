@@ -328,17 +328,39 @@ class BatchState(ModelSelectionState):
 
     # --- upload + streaming ---
 
-    async def _collect_upload_files(
+    async def _collect_upload_chunks(
         self,
-        files: Iterable[rx.UploadFile],
+        chunks: rx.UploadChunkIterator,
     ) -> list[tuple[str, bytes]]:
-        """Collect uploaded files into ordered byte payloads."""
+        """Collect streamed upload chunks into ordered byte payloads."""
         uploaded_files: list[tuple[str, bytes]] = []
-        for file in files:
-            name = file.name
+        current_name = ""
+        current_data = bytearray()
+        current_has_chunk = False
+
+        async for chunk in chunks:
+            name = chunk.filename
             if not name:
                 continue
-            uploaded_files.append((name, await file.read()))
+            starts_new_file = name != current_name or (
+                chunk.offset == 0 and current_has_chunk
+            )
+            if starts_new_file:
+                if current_name:
+                    uploaded_files.append((current_name, bytes(current_data)))
+                current_name = name
+                current_data = bytearray()
+                current_has_chunk = False
+            if chunk.offset != len(current_data):
+                msg = (
+                    f"Unexpected upload chunk offset for {name}: "
+                    f"{chunk.offset} != {len(current_data)}"
+                )
+                raise ValueError(msg)
+            current_data.extend(chunk.data)
+            current_has_chunk = True
+        if current_name:
+            uploaded_files.append((current_name, bytes(current_data)))
         return uploaded_files
 
     def _stage_temp_files(
@@ -407,20 +429,21 @@ class BatchState(ModelSelectionState):
         self.parsing = False
         self.retry_running = False
 
+    @rx.event(background=True)
     async def handle_upload(
         self,
-        files: list[rx.UploadFile],
-    ) -> rx.event.EventCallback | None:
-        """Stage uploaded PDFs and start streaming parse events."""
-        uploaded_files = await self._collect_upload_files(files)
+        chunks: rx.UploadChunkIterator,
+    ) -> None:
+        """Stage uploaded PDFs from the upload stream and consume parse events."""
+        uploaded_files = await self._collect_upload_chunks(chunks)
         if not uploaded_files:
-            return None
+            return
 
-        temp_files = self._stage_temp_files(uploaded_files)
-        job_id = self._start_parse_queue(temp_files)
+        async with self:
+            temp_files = self._stage_temp_files(uploaded_files)
+            job_id = self._start_parse_queue(temp_files)
         if job_id is not None:
-            return BatchState.stream_parse(job_id)
-        return None
+            await self._stream_parse_queue(job_id)
 
     @rx.event(background=True)
     async def stream_parse(self, job_id: str) -> None:

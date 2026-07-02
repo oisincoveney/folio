@@ -9,7 +9,7 @@ _PICK_ID = "folio-pdf-chooser"
 
 def upload_drop_event() -> rx.event.EventSpec:
     """Upload dropped PDFs; the upload handler starts parsing after staging."""
-    return BatchState.handle_upload(rx.upload_files(upload_id=_PICK_ID))
+    return BatchState.handle_upload(rx.upload_files_chunk(upload_id=_PICK_ID))
 
 
 def file_picker() -> rx.Component:

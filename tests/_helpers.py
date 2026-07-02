@@ -13,7 +13,7 @@ from pathlib import Path
 
 import reflex as rx
 
-from folio.states.batch import BatchState, _active_jobs
+from folio.states.batch import BatchState
 
 
 def month_prefix() -> str:
@@ -26,14 +26,33 @@ def make_upload_file(name: str, data: bytes) -> rx.UploadFile:
     return rx.UploadFile(file=io.BytesIO(data), path=Path(name))
 
 
+async def make_upload_chunks(
+    files: Iterable[rx.UploadFile],
+) -> rx.UploadChunkIterator:
+    """Build a Reflex upload chunk iterator from in-memory upload files."""
+    chunks = rx.UploadChunkIterator()
+    for file in files:
+        await chunks.push(
+            rx.UploadChunk(
+                filename=file.name or "",
+                offset=0,
+                content_type="application/pdf",
+                data=await file.read(),
+            ),
+        )
+    await chunks.finish()
+    return chunks
+
+
 async def upload_and_parse(
     state: BatchState,
     files: Iterable[rx.UploadFile],
 ) -> None:
-    """Run BatchState.handle_upload and drain the returned parse job."""
-    await BatchState.handle_upload.fn(state, list(files))
-    if _active_jobs:
-        await drain_active_job(state)
+    """Run BatchState.handle_upload against a chunked upload."""
+    await BatchState.event_handlers["handle_upload"].fn(
+        state,
+        await make_upload_chunks(files),
+    )
 
 
 async def drain_active_job(state) -> None:  # noqa: ANN001
