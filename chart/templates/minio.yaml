@@ -8,8 +8,9 @@ metadata:
     app.kubernetes.io/component: minio
 spec:
   selector:
-    {{- include "folio.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: minio
+    # Matches the pod template's bare `app: minio` label (see
+    # folio.componentSelector) — identical to the live pre-chart Service.
+    {{- include "folio.componentSelector" "minio" | nindent 4 }}
   ports:
     - name: api
       port: 9000
@@ -29,6 +30,13 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  {{- with .Values.minio.storageClassName }}
+  # Pinned in prod to `longhorn-retain` (matches the live bound PVC exactly —
+  # storageClassName is immutable, so a mismatch here would either be
+  # rejected outright or leave the field's ownership ambiguous). Empty/unset
+  # in dev, where the PVC is ephemeral and the cluster default SC is fine.
+  storageClassName: {{ . }}
+  {{- end }}
   resources:
     requests:
       storage: {{ .Values.minio.storage | quote }}
@@ -45,11 +53,14 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "folio.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: minio
+      # Bare `app: minio` — the live pre-chart StatefulSet's selector
+      # (immutable field; must match exactly for Argo to adopt it in prod
+      # instead of erroring). See folio.componentSelector docstring.
+      {{- include "folio.componentSelector" "minio" | nindent 6 }}
   template:
     metadata:
       labels:
+        {{- include "folio.componentSelector" "minio" | nindent 8 }}
         {{- include "folio.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: minio
     spec:
@@ -86,13 +97,31 @@ spec:
             claimName: minio-data
 ---
 # One-shot bucket creation against the cluster-internal minio service.
+#
+# Rendered as an Argo CD Sync hook (PostSync — after minio's Service/
+# StatefulSet apply), not a plain resource. A plain Job's spec.template is
+# immutable; the live prod Job (created by kustomize/kubectl-apply, no chart
+# labels on its pod template) would reject the chart's richer pod-template
+# label set on the very first cutover apply, permanently OutOfSync. Argo
+# deletes-and-recreates hook resources on every sync (hook-delete-policy
+# BeforeHookCreation) instead of patching them in place, sidestepping the
+# immutable-field conflict entirely; hook resources are also excluded from
+# the tracked-resource prune set (doc-009, scripts/fleet-migration-diff.sh
+# filters on this exact annotation) — matching the rondo migrate-job.yaml
+# hook precedent in this fleet (jalgpall's equivalent uses the Helm-native
+# `helm.sh/hook` alias; the native `argocd.argoproj.io/hook` form is used
+# here so the migration diff guard's annotation filter recognizes it
+# unambiguously). `mc mb --ignore-existing` makes every re-run a safe no-op.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: minio-create-bucket
+  name: minio-create-bucket-{{ .Release.Revision }}
   labels:
     {{- include "folio.labels" . | nindent 4 }}
     app.kubernetes.io/component: minio
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   template:
     metadata:
@@ -106,7 +135,7 @@ spec:
           image: {{ .Values.minio.mcImage | quote }}
           envFrom:
             - configMapRef:
-                name: {{ include "folio.fullname" . }}
+                name: {{ include "folio.configMapName" . }}
             - secretRef:
                 name: {{ include "folio.runtimeSecretName" . }}
           command:

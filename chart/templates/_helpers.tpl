@@ -50,6 +50,35 @@ app.kubernetes.io/name: {{ include "folio.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
+{{/*
+Bare adoption-safe selector for a workload component — `app: <component>`,
+the single-key scheme the pre-chart raw k8s/base manifests used (folio's
+Deployment: `app: folio`; minio's StatefulSet: `app: minio`; both verified
+live via `kubectl get deploy/sts -o jsonpath=.spec.selector`, prod 2026-07).
+Deployment/StatefulSet .spec.selector is immutable, so migrating either onto
+this chart MUST render the exact live selector or Argo's adopt-in-place patch
+is rejected by the API server. Kept deliberately separate from
+folio.selectorLabels (the app.kubernetes.io/name+instance pair): that richer
+pair still decorates pod-template METADATA (mutable, informational) alongside
+this bare key, but only this bare key may appear in a matchLabels block.
+Mirrors the momokaya chart's identical INFRA-087.09 adoption fix.
+*/}}
+{{- define "folio.componentSelector" -}}
+app: {{ . }}
+{{- end -}}
+
+{{/*
+Non-sensitive runtime ConfigMap name — kept as the literal "folio-config"
+(NOT folio.fullname) so it matches the live pre-chart ConfigMap exactly. A
+mismatch would make the chart render a differently-named ConfigMap on the
+first prod cutover apply, leaving the old "folio-config" tracked-but-
+unrendered (pruned — doc-009 hazard class, k8s/base/configmap.yaml's
+original name).
+*/}}
+{{- define "folio.configMapName" -}}
+folio-config
+{{- end -}}
+
 {{- define "folio.imageRef" -}}
 {{- if or (contains "@" .repository) (regexMatch ":[^/]+$" .repository) -}}
 {{- .repository -}}

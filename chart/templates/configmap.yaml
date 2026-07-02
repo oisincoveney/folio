@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "folio.fullname" . }}
+  name: {{ include "folio.configMapName" . }}
   labels:
     {{- include "folio.labels" . | nindent 4 }}
 data:
