@@ -23,5 +23,6 @@ spec:
       protocol: TCP
     {{- end }}
   selector:
-    {{- include "folio.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: folio
+    # Matches the pod template's bare `app: folio` label (see
+    # folio.componentSelector) — identical to the live pre-chart Service.
+    {{- include "folio.componentSelector" "folio" | nindent 4 }}

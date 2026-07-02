@@ -63,7 +63,7 @@ spec:
             - name: POSTGRES_USER
               valueFrom:
                 configMapKeyRef:
-                  name: {{ include "folio.fullname" . }}
+                  name: {{ include "folio.configMapName" . }}
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:

@@ -65,6 +65,19 @@ minio:
   image: minio/minio:latest
   mcImage: minio/mc:latest
   storage: 10Gi
+  # PVC storageClassName. Empty = cluster default (fine for dev's ephemeral
+  # volume); prod pins `longhorn-retain` to match the live bound PVC exactly.
+  storageClassName: ""
+
+# Daily pg_dump of the app Postgres into the same MinIO bucket (second backup
+# layer on top of the longhorn-retain PVC pin). Translates
+# k8s/overlays/prod/postgres-backup-cronjob.yaml. Independent of the in-chart
+# `postgres:` gate above — prod's Postgres is the CNPG Cluster `folio-db`
+# (external to this chart); the dump connects via DATABASE_URL either way.
+backup:
+  enabled: false
+  image: postgres:17
+  schedule: "15 3 * * *"
 
 resources:
   requests:

@@ -17,11 +17,14 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "folio.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: folio
+      # Bare `app: folio` — the live pre-chart Deployment's selector
+      # (immutable field; must match exactly for Argo to adopt it in prod
+      # instead of erroring). See folio.componentSelector docstring.
+      {{- include "folio.componentSelector" "folio" | nindent 6 }}
   template:
     metadata:
       labels:
+        {{- include "folio.componentSelector" "folio" | nindent 8 }}
         {{- include "folio.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: folio
         {{- include "folio.momokayaLabels" . | nindent 8 }}
@@ -41,7 +44,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           envFrom:
             - configMapRef:
-                name: {{ include "folio.fullname" . }}
+                name: {{ include "folio.configMapName" . }}
             - secretRef:
                 name: {{ include "folio.runtimeSecretName" . }}
                 optional: {{ .Values.secrets.optional }}
@@ -68,7 +71,7 @@ spec:
               protocol: TCP
           envFrom:
             - configMapRef:
-                name: {{ include "folio.fullname" . }}
+                name: {{ include "folio.configMapName" . }}
             - secretRef:
                 name: {{ include "folio.runtimeSecretName" . }}
                 optional: {{ .Values.secrets.optional }}
