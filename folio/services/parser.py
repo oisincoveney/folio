@@ -208,12 +208,17 @@ def get_models() -> list[str]:
     return [str(model["id"]) for model in get_model_options()]
 
 
+def select_default_model(models: list[dict[str, str | bool]]) -> str:
+    """Return the preferred model from an already-loaded options list."""
+    model_ids = [str(model["id"]) for model in models]
+    if PREFERRED_MODEL in model_ids:
+        return PREFERRED_MODEL
+    return model_ids[0] if model_ids else ""
+
+
 def get_default_model() -> str:
     """Return the preferred model if available, otherwise the first in the list."""
-    models = get_models()
-    if PREFERRED_MODEL in models:
-        return PREFERRED_MODEL
-    return models[0] if models else ""
+    return select_default_model(get_model_options())
 
 
 def claim_pending(file_id: str) -> tuple[str, bool] | None:

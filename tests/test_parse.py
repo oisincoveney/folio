@@ -35,11 +35,23 @@ def test_parse_verbose_models_marks_pdf_capability():
 def test_get_default_model_prefers_opus_4_7(monkeypatch):
     monkeypatch.setattr(
         parse,
-        "get_models",
-        lambda: ["opencode/big-pickle", "anthropic/claude-opus-4-7"],
+        "get_model_options",
+        lambda: [
+            {"id": "opencode/big-pickle", "pdf": False},
+            {"id": "anthropic/claude-opus-4-7", "pdf": True},
+        ],
     )
 
     assert parse.get_default_model() == "anthropic/claude-opus-4-7"
+
+
+def test_select_default_model_uses_loaded_options_without_subprocess():
+    options = [
+        {"id": "opencode/big-pickle", "pdf": False},
+        {"id": "anthropic/claude-opus-4-7", "pdf": True},
+    ]
+
+    assert parse.select_default_model(options) == "anthropic/claude-opus-4-7"
 
 
 def test_get_model_options_returns_empty_when_opencode_is_missing(monkeypatch):

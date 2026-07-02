@@ -22,6 +22,7 @@ from folio.models import InvoiceRow
 from folio.services import parser as parse_mod
 from folio.states.batch import BatchState, _active_jobs
 from folio.states.file_browser import FileBrowserState
+from folio.states.model_selection import ModelSelectionState, model_state_from_options
 
 from tests._helpers import (
     drain_active_job,
@@ -64,6 +65,52 @@ def test_upload_handler_uses_background_chunk_upload() -> None:
     assert handler.is_background is True
     assert param_name == "chunks"
     assert annotation == rx.UploadChunkIterator
+
+
+def test_load_models_uses_background_event() -> None:
+    """Model discovery cannot hold the page state lock during upload staging."""
+    handler = ModelSelectionState.event_handlers["load_models"]
+
+    assert handler.is_background is True
+
+
+def test_model_state_from_options_reuses_loaded_options_for_default(monkeypatch):
+    """Model loading derives the default from one options call."""
+    monkeypatch.setattr(
+        parse_mod,
+        "get_default_model",
+        lambda: pytest.fail("model options should not trigger a second lookup"),
+    )
+    options = [{"id": "loaded-model", "pdf": True}]
+
+    models, default_model = model_state_from_options(options)
+
+    assert models == [{"id": "loaded-model", "pdf": True}]
+    assert default_model == "loaded-model"
+
+
+@pytest.mark.asyncio
+async def test_upload_handler_resolves_default_model_for_parse(monkeypatch):
+    """Upload parse startup receives one resolved model string."""
+    invocations = []
+
+    def fake_start_parse_job(temp_files, model):
+        invocations.append((temp_files, model))
+        q: queue.Queue = queue.Queue()
+        q.put({"type": "done"})
+        return q
+
+    monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
+    monkeypatch.setattr(parse_mod, "get_default_model", lambda: "default-model")
+
+    state = BatchState()
+    await BatchState.event_handlers["handle_upload"].fn(
+        state,
+        await make_upload_chunks([make_upload_file("default.pdf", b"%PDF-1.4")]),
+    )
+
+    assert invocations[0][1] == "default-model"
+    assert _active_jobs == {}
 
 
 @pytest.mark.asyncio

@@ -398,6 +398,7 @@ class BatchState(ModelSelectionState):
     def _start_parse_queue(
         self,
         temp_files: list[tuple[str, str, str, str]],
+        model: str,
     ) -> str | None:
         """Start parser workers for staged files and return the active job id."""
         if not temp_files:
@@ -405,7 +406,6 @@ class BatchState(ModelSelectionState):
         if not self.selected_file_key and self.rows:
             self.selected_file_key = self.rows[0].file_key
 
-        model = self.model or parse_mod.get_default_model()
         q = start_parse_job(temp_files, model)
         job_id = str(uuid.uuid4())
         _active_jobs[job_id] = q
@@ -439,9 +439,14 @@ class BatchState(ModelSelectionState):
         if not uploaded_files:
             return
 
+        model = self.model
         async with self:
             temp_files = self._stage_temp_files(uploaded_files)
-            job_id = self._start_parse_queue(temp_files)
+            model = self.model or model
+        if not model:
+            model = await asyncio.to_thread(parse_mod.get_default_model)
+        async with self:
+            job_id = self._start_parse_queue(temp_files, model)
         if job_id is not None:
             await self._stream_parse_queue(job_id)
 
@@ -570,7 +575,9 @@ class BatchState(ModelSelectionState):
         """Dispatch a parse job for all pending rows in the retry queue."""
         if self.retry_running or not self.retry_queue:
             return
-        model = self.model or parse_mod.get_default_model()
+        model = self.model
+        if not model:
+            model = await asyncio.to_thread(parse_mod.get_default_model)
         retryable = [
             r
             for r in self.rows
