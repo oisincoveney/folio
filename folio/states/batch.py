@@ -26,19 +26,10 @@ UPLOAD_DIR = Path(__file__).parent.parent.parent / ".folio_uploads"
 # Keyed by job_id; populated before stream_parse background task reads it.
 _active_jobs: dict[str, queue.Queue] = {}
 _PARSE_QUEUE_TIMEOUT_SECONDS = 130
-_PARSE_START_RETRY_DELAY_MS = 250
-_PARSE_START_MAX_ATTEMPTS = 120
 
 
 def _path_exists(p: str) -> bool:
     return Path(p).exists()
-
-
-def _parse_start_retry_script(next_attempt: int) -> str:
-    return (
-        "new Promise((resolve) => "
-        f"setTimeout(() => resolve({next_attempt}), {_PARSE_START_RETRY_DELAY_MS}))"
-    )
 
 
 class BatchState(ModelSelectionState):
@@ -56,7 +47,6 @@ class BatchState(ModelSelectionState):
     saving: bool = False
     completed: int = 0
     total: int = 0
-    pending_parse_jobs: list[str] = []
     retry_queue: list[str] = []
     retry_running: bool = False
     staged_files: dict[str, list[str]] = {}
@@ -234,7 +224,6 @@ class BatchState(ModelSelectionState):
         self.saving = False
         self.completed = 0
         self.total = 0
-        self.pending_parse_jobs = []
         self.retry_queue = []
         self.retry_running = False
         self.staged_files = {}
@@ -421,37 +410,17 @@ class BatchState(ModelSelectionState):
     async def handle_upload(
         self,
         files: list[rx.UploadFile],
-    ) -> None:
-        """Stage uploaded PDFs and record parse jobs for the client retry trigger."""
+    ) -> rx.event.EventCallback | None:
+        """Stage uploaded PDFs and start streaming parse events."""
         uploaded_files = await self._collect_upload_files(files)
         if not uploaded_files:
-            return
+            return None
 
         temp_files = self._stage_temp_files(uploaded_files)
         job_id = self._start_parse_queue(temp_files)
         if job_id is not None:
-            self.pending_parse_jobs.append(job_id)
-
-    @rx.event
-    def start_pending_parse(
-        self,
-        attempt: int = 0,
-    ) -> rx.event.EventCallback | rx.event.EventSpec | None:
-        """Start the next staged parse job, retrying until upload REST staging lands."""
-        while self.pending_parse_jobs:
-            job_id = self.pending_parse_jobs.pop(0)
-            if job_id in _active_jobs:
-                return BatchState.stream_parse(job_id)
-
-        if attempt >= _PARSE_START_MAX_ATTEMPTS:
-            if self.parsing and not _active_jobs:
-                self._finish_parse_queue()
-            return None
-
-        return rx.call_script(
-            _parse_start_retry_script(attempt + 1),
-            callback=BatchState.start_pending_parse,
-        )
+            return BatchState.stream_parse(job_id)
+        return None
 
     @rx.event(background=True)
     async def stream_parse(self, job_id: str) -> None:
