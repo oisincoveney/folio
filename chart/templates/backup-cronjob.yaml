@@ -20,6 +20,18 @@
 # The base postgres image ships `pg_dump` but not `mc`; the CronJob downloads
 # mc once per run. Adds ~3s to a sub-second backup of an empty DB; negligible
 # for the actual workload size.
+#
+# INFRA-100: `pg_dump | mc pipe` under `sh -euc` (no `pipefail`) let a pg_dump
+# failure exit 0 -- `mc pipe` reads an empty stdin, uploads a valid-but-empty
+# object, and the pipeline's exit status is `mc`'s (success), never
+# `pg_dump`'s. That shipped 8 days of silent empty dumps logged as "backup
+# ok" (2026-06-20 -> 06-28) before pg_dump started failing outright. Fixed by
+# restructuring, not by adding `pipefail` alone: a streaming pipe can never be
+# size-checked before it lands in the bucket, so the dump goes to a local
+# tempfile FIRST, gets sized, and only a non-trivial dump is uploaded. Any
+# failure (pg_dump, size check, upload) now exits non-zero -> the Job fails
+# loud, `failedJobsHistoryLimit` keeps the evidence, and
+# `FolioPostgresBackupJobFailed` (infra PrometheusRule) pages on it.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -53,7 +65,9 @@ spec:
                     optional: {{ .Values.secrets.optional }}
               command:
                 - sh
-                - -euc
+                - -euo
+                - pipefail
+                - -c
                 - |
                   apt-get update -qq
                   apt-get install -y -qq --no-install-recommends curl ca-certificates
@@ -65,10 +79,35 @@ spec:
 
                   TS=$(date -u +%Y-%m-%dT%H-%M-%SZ)
                   KEY="_backups/postgres/folio-${TS}.dump"
+                  DUMP_FILE="$(mktemp)"
 
+                  # Dump to a local tempfile, NOT a pipe straight into `mc`: a
+                  # streaming pipe uploads bytes as pg_dump produces them, so
+                  # there is no point at which the object can be size-checked
+                  # before it lands in the bucket. Landing it locally first
+                  # makes the size check possible and keeps pg_dump's own exit
+                  # status the one `set -e` sees (no pipeline exit-status
+                  # ambiguity left to reintroduce).
                   pg_dump --dbname="$DATABASE_URL" \
                           --no-owner --no-privileges --format=custom \
-                    | mc pipe "local/$FOLIO_BUCKET_NAME/$KEY"
+                          --file="$DUMP_FILE"
 
-                  echo "backup ok: $KEY"
+                  DUMP_SIZE=$(wc -c < "$DUMP_FILE")
+                  # 1KiB floor: a custom-format pg_dump of a truly empty
+                  # schema still carries dump-header/TOC overhead of several
+                  # hundred bytes, so anything under 1KiB means pg_dump wrote
+                  # (at most) its header and nothing else -- exactly the
+                  # failure mode that produced the 2026-06-20 -> 06-28 empty
+                  # objects. A real dump (folio's smallest known-good backup:
+                  # 15KiB) clears this by more than an order of magnitude.
+                  MIN_DUMP_BYTES=1024
+                  if [ "$DUMP_SIZE" -lt "$MIN_DUMP_BYTES" ]; then
+                    echo "backup FAILED: dump is ${DUMP_SIZE} bytes (< ${MIN_DUMP_BYTES}), refusing to upload a near-empty dump" >&2
+                    exit 1
+                  fi
+
+                  mc cp "$DUMP_FILE" "local/$FOLIO_BUCKET_NAME/$KEY"
+                  rm -f "$DUMP_FILE"
+
+                  echo "backup ok: $KEY (${DUMP_SIZE} bytes)"
 {{- end }}
