@@ -120,15 +120,18 @@ jobs:
           FOLIO_BUCKET_REGION: us-east-1
           FOLIO_BUCKET_NAME: folio-e2e
         run: |
-          uv run reflex run &
+          uv run reflex run > "$RUNNER_TEMP/folio-reflex.log" 2>&1 &
           # Wait until the app is serving
           for _ in $(seq 1 60); do
             if curl -sf http://localhost:3000/ > /dev/null 2>&1; then
               echo "folio is up"
-              break
+              exit 0
             fi
             sleep 2
           done
+          echo "folio did not become healthy" >&2
+          tail -200 "$RUNNER_TEMP/folio-reflex.log" >&2
+          exit 1
 
       - name: Install Playwright
         run: cd e2e && npm ci && npx playwright install chromium --with-deps
@@ -136,12 +139,15 @@ jobs:
       - name: Run Playwright e2e
         env:
           BASE_URL: http://localhost:3000
-        run: cd e2e && npx playwright test --reporter=github
+          PLAYWRIGHT_ARTIFACTS_DIR: ${{ runner.temp }}/folio-playwright-artifacts/INFRA-070.04
+        run: cd e2e && npx playwright test
 
       - name: Upload Playwright artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-artifacts-INFRA-070.04
-          path: test-artifacts/INFRA-070.04/
+          path: |
+            ${{ runner.temp }}/folio-playwright-artifacts/INFRA-070.04/
+            ${{ runner.temp }}/folio-reflex.log
           retention-days: 30

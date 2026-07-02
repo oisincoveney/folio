@@ -1,4 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
+import os from "node:os";
+import path from "node:path";
 
 /**
  * folio Playwright config.
@@ -15,14 +17,19 @@ import { defineConfig, devices } from "@playwright/test";
  * suite runs against the real app without needing a verify-bot session.
  */
 const baseURL = process.env.BASE_URL ?? "http://localhost:3001";
+const artifactRoot =
+  process.env.PLAYWRIGHT_ARTIFACTS_DIR ??
+  path.join(os.tmpdir(), "folio-playwright-artifacts", "INFRA-070.04");
 
 export default defineConfig({
   testDir: "./tests",
-  /* Artifacts go into the repo-relative test-artifacts dir, keyed by ticket */
-  outputDir: "../test-artifacts/INFRA-070.04",
+  /* Keep artifacts outside the Reflex-watched repo tree; traces/videos trigger dev reloads. */
+  outputDir: artifactRoot,
   /* Fail fast in CI; no retries (classification is deterministic with real opencode) */
   retries: 0,
-  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
+  reporter: process.env.CI
+    ? [["github"], ["html", { open: "never", outputFolder: path.join(artifactRoot, "html-report") }]]
+    : "list",
   /* Real OpenCode path can consume parser.py's 60s classify + 2x120s extract ceiling. */
   timeout: 420_000,
   /* Default assertion timeout — generous for state updates via WebSocket */
