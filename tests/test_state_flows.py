@@ -17,6 +17,7 @@ from reflex.event import Event
 from reflex_base.event import resolve_upload_handler_param
 from sqlmodel import select
 
+from folio.components.file_picker import upload_drop_events
 from folio.db_models import InvoiceRecord
 from folio.models import InvoiceRow
 from folio.services import parser as parse_mod
@@ -51,7 +52,7 @@ def _invoice_result_event(file_key: str, source_id: str, file_id: str) -> dict:
 
 
 def test_upload_handler_uses_buffered_upload_with_deferred_parse() -> None:
-    """Upload response stages rows; returned callback starts parse over the event channel."""
+    """Upload response stages rows; client retry trigger starts parse over the event channel."""
     param_name, annotation = resolve_upload_handler_param(BatchState.handle_upload)
 
     assert BatchState.handle_upload.is_background is False
@@ -60,8 +61,8 @@ def test_upload_handler_uses_buffered_upload_with_deferred_parse() -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_handler_returns_parse_callback_after_staging(monkeypatch):
-    """Upload response queues a frontend parse callback after the job exists."""
+async def test_upload_handler_stages_pending_parse_job(monkeypatch):
+    """Upload response only stages rows and records a pending parse job."""
 
     def fake_start_parse_job(temp_files, _model):
         q: queue.Queue = queue.Queue()
@@ -85,11 +86,84 @@ async def test_upload_handler_returns_parse_callback_after_staging(monkeypatch):
         [make_upload_file("stream.pdf", b"%PDF-1.4 stream")],
     )
 
-    assert parse_event is not None
-    event = Event.from_event_type(parse_event)[0]
+    assert parse_event is None
+    assert len(state.pending_parse_jobs) == 1
+    assert state.pending_parse_jobs[0] in _active_jobs
+    assert state.has_rows is True
+    assert state.rows[0].status == "pending"
+    assert state.parsing is True
+
+    _active_jobs.clear()
+
+
+def test_upload_drop_events_start_retry_trigger_after_upload() -> None:
+    """Drop handler starts upload, then polls until the upload event stages a job."""
+    events = upload_drop_events()
+
+    assert [event.handler.fn.__name__ for event in events] == [
+        "handle_upload",
+        "start_pending_parse",
+    ]
+    assert events[0].client_handler_name == "uploadFiles"
+    assert events[1].client_handler_name == ""
+
+
+def test_start_pending_parse_retries_when_upload_has_not_staged_yet() -> None:
+    """Parse trigger retries because upload REST dispatch is intentionally fire-and-forget."""
+    state = BatchState()
+
+    retry_event = state.start_pending_parse(0)
+
+    event = Event.from_event_type(retry_event)[0]
     assert event.name == "_call_script"
-    assert "stream_parse" in event.payload["callback"]
-    assert next(iter(_active_jobs)) in event.payload["javascript_code"]
+    assert "setTimeout" in event.payload["javascript_code"]
+    assert "start_pending_parse" in event.payload["callback"]
+
+
+def test_start_pending_parse_returns_background_parse_for_pending_job() -> None:
+    """Once upload stages a job, the retry trigger starts background parse exactly once."""
+    state = BatchState()
+    _active_jobs["job-1"] = queue.Queue()
+    state.pending_parse_jobs = ["job-1"]
+
+    parse_event = state.start_pending_parse(1)
+
+    assert parse_event is not None
+    assert parse_event.handler.fn.__name__ == "stream_parse"
+    assert state.pending_parse_jobs == []
+
+    _active_jobs.clear()
+
+
+@pytest.mark.asyncio
+async def test_upload_handler_then_retry_trigger_consumes_parse_job(monkeypatch):
+    """Upload stages rows; retry trigger starts and drains the parse job."""
+
+    def fake_start_parse_job(temp_files, _model):
+        q: queue.Queue = queue.Queue()
+        for name, _tmp_path, file_key, source_id in temp_files:
+            q.put({
+                "type": "start",
+                "file_key": file_key,
+                "source_id": source_id,
+                "filename": name,
+            })
+            q.put(_invoice_result_event(file_key, source_id, f"fid-{file_key}"))
+        q.put({"type": "done"})
+        return q
+
+    monkeypatch.setattr("folio.states.batch.start_parse_job", fake_start_parse_job)
+    monkeypatch.setattr(parse_mod, "get_default_model", lambda: "test-model")
+
+    state = BatchState()
+    await BatchState.handle_upload.fn(
+        state,
+        [make_upload_file("stream.pdf", b"%PDF-1.4 stream")],
+    )
+    parse_event = state.start_pending_parse(1)
+
+    assert parse_event is not None
+    assert parse_event.handler.fn.__name__ == "stream_parse"
 
     await drain_active_job(state)
 

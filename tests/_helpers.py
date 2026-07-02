@@ -32,6 +32,7 @@ async def upload_and_parse(
 ) -> None:
     """Run BatchState.handle_upload and drain the returned parse job."""
     await BatchState.handle_upload.fn(state, list(files))
+    state.start_pending_parse()
     if _active_jobs:
         await drain_active_job(state)
 
